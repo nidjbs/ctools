@@ -25,7 +25,8 @@
 - **语言/栈**：Electron + React + TS。Main=runtime，preload=类型化 IPC 契约，Renderer=React 视图。
 - **类型优先**：TS strict；IPC 用共享类型，禁止裸字符串协议。
 - **文案**：UI 中文；代码注释极简英文；commit 信息英文。
-- **提交**：小步、一个逻辑一个 commit、先跑测试。默认不自动 commit（等确认）。
+- **提交/推送（重要偏好）**：**默认不 commit、更不擅自 push**。只在用户明确要求时才 commit；**push 到远程必须用户显式说"提交并推送/push"**，仅 commit 或仅改工作区时绝不 push。
+- **提交**：小步、一个逻辑一个 commit、先跑测试。
 - **测试**：改动涉及逻辑就补单测；核心路径（注册表/gateway client/session）必须有测试。
 - **迁移原则**：能力从 go-ai-gateway `cli/` 迁移（Go→TS），**只迁移不删除**原 CLI。
 - **依赖**：少而精；新增依赖需说明理由。
