@@ -110,3 +110,159 @@ cTools 负责本地 go-ai-gateway 的起停与配置热更（对应原 gw `up/do
 - 不引入网络工具（保持"无外传"安全边界）。
 - 不迁移原 CLI 的 `up/down/reload` 运维形态——由 gateway manager 在 UI 内替代。
 - 不做多用户 / 云同步。
+
+## 9. 可执行契约（供构建与迁移参考）
+
+### 9.1 目录布局
+
+```
+ctools/
+  AGENTS.md / CLAUDE.md / docs/architecture.md
+  src/
+    main/                     # Electron Main —— 唯一"有逻辑"的地方
+      index.ts                # app 生命周期: 单实例/热键/窗口
+      registry.ts             # CommandRegistry + registerBuiltins
+      agent.ts                # agent loop（流式 + tool_calls）
+      session.ts              # 事件溯源会话（surface/compact/resume）
+      gatewayClient.ts        # OpenAI 兼容流式客户端
+      gatewayManager.ts       # 拉起 / reload / restart（§6）
+      config.ts               # 读写 userData/config.json
+      ipc.ts                  # preload 暴露的类型化 api
+      system.ts               # pbcopy / mdfind / 剪贴板 watcher
+    preload/                  # contextBridge
+      index.ts
+      api.d.ts                # 共享的 IPC 契约类型
+    shared/                   # main/renderer 共享类型
+      types.ts                # Command / Result / Session / Config …
+    renderer/                 # React
+      launcher/               # ① 悬浮框
+      chat/                   # ② Chat 窗
+      settings/               # ③ 配置
+  commands/                   # 内置命令（每个文件一个）
+    trans.ts / ask.ts / clipboard.ts / find_file.ts / files.ts …
+  tests/
+```
+
+### 9.2 核心类型（`shared/types.ts`）
+
+```ts
+export type CommandKind = "quick" | "chat" | "confirm";
+
+export interface Command {
+  id: string;
+  title: string;
+  aliases: string[];
+  kind: CommandKind;
+  schema?: JSONSchema;
+  agentTool?: boolean;
+  enabled?: boolean;
+  run(input: unknown, ctx: Ctx): Promise<Result>;
+}
+
+export type Result =
+  | { type: "text"; text: string }
+  | { type: "list"; items: { title: string; subtitle?: string; copy?: string }[] }
+  | { type: "chat"; sessionId: string }
+  | { type: "confirm"; message: string; resolve(value: boolean): void };
+
+export interface Ctx {
+  config: AppConfig;
+  gateway: GatewayClient;
+  session: Session;
+  fs: FilePolicy;        // file_roots 作用域 + write_confirm
+  system: System;        // pbcopy / mdfind / clipboard
+}
+
+export interface AppConfig {
+  gatewayUrl: string;
+  adminUrl: string;
+  adminToken?: string;
+  defaultAlias: string;
+  clipboardLocalAlias?: string;   // 剪贴板本地召回专用
+  fileRoots: string[];
+  writeConfirm: "auto" | "always" | "never";
+  hotkey: string;
+  commands: Record<string, boolean>;   // 启停
+}
+
+// 会话事件（事件溯源, 与 gw sessionlog schema 对齐）
+export type SessionEventType =
+  | "session.started" | "system.context" | "user.message"
+  | "model.request" | "assistant.message" | "tool.call" | "tool.result"
+  | "agent.error" | "context.compact" | "session.ended";
+
+export interface SessionEvent {
+  event_id: string; session_id: string; seq: number; type: SessionEventType;
+  occurred_at: string; role?: string; turn?: number; request_id?: string;
+  model?: string; tool_name?: string; tool_call_id?: string; arguments?: string;
+  content?: string; tool_calls?: unknown[]; source_seqs?: number[]; shadow_seqs?: number[];
+}
+```
+
+### 9.3 IPC 契约（preload `api`）
+
+```ts
+window.api = {
+  commands: {
+    list(): CommandMeta[];                       // Launcher 联想
+    run(id: string, input: unknown): Promise<Result>;
+  },
+  suggest(text: string): Promise<CommandMeta | "chat">;  // 自由内容→agent 推测
+  session: {
+    open(kind: "chat" | "resume", sessionId?: string): string;
+    send(msg: string): Promise<void>;
+    onEvent(cb: (e: SessionEvent) => void): () => void;  // 流式/工具卡片
+    transcript(): SessionEvent[];
+  },
+  gateway: { status(): Promise<"running"|"stopped">; restart(): void; },
+  config: { get(): AppConfig; update(patch): Promise<void>; },
+};
+```
+
+### 9.4 示例命令：`find_file`（开发者扩展范式）
+
+```ts
+import { Command } from "../src/shared/types";
+
+export const findFile: Command = {
+  id: "find_file",
+  title: "查找文件",
+  aliases: ["find", "文件", "搜索", "locate"],
+  kind: "quick",
+  schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+  agentTool: true,                       // agent 也可调用
+  async run({ query }, { config, system }) {
+    const paths = await system.mdfind(query, config.fileRoots);   // -onlyin roots
+    return { type: "list", items: paths.map((p) => ({ title: p, copy: p })) };
+  },
+};
+```
+
+### 9.5 Gateway Manager 接口
+
+```ts
+class GatewayManager {
+  status(): Promise<"running" | "stopped">;      // 探测 readyz
+  ensureStarted(): Promise<void>;                 // 未就绪则拉起（托管配置+pid/日志）
+  applyConfig(yaml: string, mode: "reload" | "restart"): Promise<void>;
+  // reload = POST /admin/reload; restart = 停旧 + 按新配置起新
+  stop(): Promise<void>;
+}
+```
+
+### 9.6 agent loop（伪码，内化 gw `agent.go`）
+
+```
+turn(messages):
+  loop (≤8 轮):
+    res = gateway.chatStream(messages, tools=agentTool 命令)   // 流式→UI
+    session.append(assistant, res)                              // 事件溯源
+    if !res.tool_calls: return final
+    for call in res.tool_calls:
+      cmd = registry.getTool(call.name)
+      ok? session.append(tool.call)
+      out = await cmd.run(call.args)                            // FilePolicy/系统工具
+      session.append(tool.result, out)                          // 完整结果落日志
+    maybeCompact(session, config)                               // 近满触发压缩
+```
+
