@@ -1,0 +1,29 @@
+{
+  "name": "ctools",
+  "version": "0.1.0",
+  "private": true,
+  "description": "你的个人 AI 助手 —— uTools 式悬浮命令面板",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "command:new": "node scripts/new-command.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.3.0",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.5"
+  }
+}
