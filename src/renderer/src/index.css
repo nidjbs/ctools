@@ -70,6 +70,16 @@ body {
   color: #ccc;
 }
 
+.t-sub {
+  margin-left: auto;
+  color: #888;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+
 .hint {
   padding: 8px 10px;
   color: #888;
@@ -100,4 +110,422 @@ body {
 .li-sub {
   color: #888;
   font-size: 12px;
+}
+
+/* ---- Chat 窗 ---- */
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 12px;
+  gap: 8px;
+}
+
+.chat-list {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bubble {
+  padding: 8px 12px;
+  border-radius: 10px;
+  max-width: 90%;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: #2f4fcf;
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: #2a2a38;
+}
+
+.bubble.tool {
+  align-self: center;
+  background: #333;
+  color: #9db4ff;
+  font-size: 12px;
+  max-width: 100%;
+}
+
+/* 工具输出：等宽、可滚动、可复制（头部「复制」= 整条原文） */
+.tool-out {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.bubble-role {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-right: 6px;
+}
+
+.bubble-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.copy {
+  border: none;
+  background: transparent;
+  color: #8fa1ff;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.bubble:hover .copy,
+.md-code:hover .md-code-head .copy {
+  opacity: 1;
+}
+.copy:hover {
+  background: #3a3a50;
+}
+
+.bubble-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* ---- Markdown 渲染 ---- */
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.md > *:first-child {
+  margin-top: 0;
+}
+.md > *:last-child {
+  margin-bottom: 0;
+}
+.md p,
+.md ul,
+.md ol,
+.md blockquote {
+  margin: 0;
+}
+.md ul,
+.md ol {
+  padding-left: 1.2em;
+}
+.md-h {
+  font-weight: 700;
+}
+.md .h1 {
+  font-size: 17px;
+}
+.md .h2 {
+  font-size: 15px;
+}
+.md .h3 {
+  font-size: 13px;
+}
+.md blockquote {
+  border-left: 3px solid #555;
+  padding-left: 8px;
+  color: #bbb;
+}
+.md hr {
+  border: none;
+  border-top: 1px solid #444;
+  margin: 4px 0;
+}
+.md code {
+  background: #232336;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.9em;
+}
+.md-code {
+  border: 1px solid #333;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #181824;
+}
+.md-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: #888;
+  border-bottom: 1px solid #333;
+}
+.md-code pre {
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+}
+.md-code pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  display: block;
+}
+.md-link {
+  color: #7d9bff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---- Settings 窗 ---- */
+.settings {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: auto;
+  gap: 14px;
+}
+.pad {
+  padding: 16px;
+}
+.settings h1 {
+  font-size: 18px;
+}
+.settings section {
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings h2 {
+  font-size: 14px;
+  color: #7d9bff;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lbl {
+  color: #aaa;
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #c33;
+}
+.dot.on {
+  background: #3c3;
+}
+.gap {
+  flex: 1;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #aaa;
+}
+.grid label.wide {
+  grid-column: 1 / -1;
+}
+.settings .bar {
+  font-size: 13px;
+  padding: 8px 10px;
+}
+.settings .area {
+  min-height: 64px;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+}
+.cmds {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cmds li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #262633;
+}
+.tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #22305a;
+  color: #9db4ff;
+}
+.dim {
+  color: #777;
+}
+.settings button {
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #34344a;
+  color: #eee;
+  cursor: pointer;
+}
+.settings button:hover:not(:disabled) {
+  background: #41415a;
+}
+.settings button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.settings button.primary {
+  background: #2f4fcf;
+}
+.notice {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.notice.ok {
+  background: #1d3224;
+  color: #7ce0a0;
+}
+.notice.err {
+  background: #3a2228;
+  color: #ff9aa2;
+}
+
+/* ---- Launcher confirm ---- */
+.confirm-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+.confirm-actions .btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: #34344a;
+  color: #eee;
+  cursor: pointer;
+}
+.confirm-actions .btn.danger {
+  background: #8a2f2f;
+}
+.confirm-actions .btn:hover {
+  opacity: 0.9;
+}
+
+/* Chat 内人工在环批准（bash / 破坏性写删） */
+.approve-box {
+  border: 1px solid #8a6d2f;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #332b1a;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.approve-msg {
+  font-size: 13px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.confirm-actions .btn.approve {
+  background: #b98a1e;
+  color: #111;
+}
+
+.chat-error {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #3a2228;
+  color: #ff9aa2;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.notice-info {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #1d3224;
+  color: #7ce0a0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* /save 草稿确认面板 */
+.save-box {
+  border: 1px solid #3c4a8a;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #1d2133;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.save-h {
+  font-size: 12px;
+  color: #9db4ff;
+}
+.sb-area {
+  min-height: 84px;
+  resize: vertical;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+.sb-row {
+  display: flex;
+  gap: 6px;
+}
+.sb-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #34344a;
+  color: #eee;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-input-row .bar {
+  flex: 1;
+}
+
+.stop {
+  border: none;
+  border-radius: 8px;
+  padding: 0 14px;
+  background: #a33;
+  color: #fff;
+  cursor: pointer;
 }

@@ -12,7 +12,8 @@ export function defaultConfig(): AppConfig {
     clipboardLocalAlias: '',
     fileRoots: [],
     writeConfirm: 'auto',
-    hotkey: 'CommandOrControl+Space',
+    hotkey: 'CommandOrControl+Shift+Space',
+    managedGateway: false,
     enabledCommands: {},
   }
 }

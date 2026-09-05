@@ -4,3 +4,7 @@ out/
 *.log
 .DS_Store
 .vite/
+/.idea/
+test-results/
+*.tsbuildinfo
+coverage/

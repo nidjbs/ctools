@@ -1,4 +1,5 @@
 import type { Command } from '../src/shared/types'
+import { queryText } from '../src/shared/tool'
 
 // 示例 Command：quick 单轮。悬浮输入 / 回车直接 inline 出译文。
 export const trans: Command = {
@@ -9,7 +10,7 @@ export const trans: Command = {
   enabled: true,
   agentTool: false,
   run: async (input: unknown, ctx) => {
-    const text = String(input ?? '').trim()
+    const text = queryText(input)
     if (!text) return { type: 'text', text: '输入要翻译的内容' }
     const turn = await ctx.gateway.chat({
       model: ctx.config.defaultAlias,

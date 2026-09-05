@@ -20,6 +20,13 @@
    - 会话事件**无损**（事件溯源），一切可见即已记录。
 5. **gateway 生命周期归 cTools 管**：启动自拉起、配置改后 reload/restart（见 architecture §6）。
 
+## SDD（Spec-Driven Development）—— 新功能必须遵循
+
+1. 先写 `specs/<feature>.md`：**行为契约**（输入/输出/边界/安全约束/失败语义），可被测试验证。
+2. 再写**编码该 spec 的测试**（单测 + 运行时 e2e）。
+3. 最后实现到测试全绿。改动导致 spec 变化时，先改 spec 再改实现。
+4. 主要流程必须有运行时 e2e（真实 GatewayClient ↔ mock gateway ↔ 真实 registry/agent/session，见 `tests/e2e.test.ts`）。
+
 ## 开发规范
 
 - **语言/栈**：Electron + React + TS。Main=runtime，preload=类型化 IPC 契约，Renderer=React 视图。
@@ -35,10 +42,17 @@
 
 ```sh
 npm run dev                 # 本地跑 Electron
-npm run test                # 单测
+npm run test                # 单测 + 运行时 e2e（vitest，tests/*.test.ts）
+npm run test:ui             # UI e2e（构建 out/ 后 Playwright 驱动真实 Electron ↔ mock gateway，tests/ui）
+npm run test:all            # 回归：test + test:ui 全量
+npm run typecheck           # tsc 双配置
 npm run command:new <name>  # 生成新命令骨架(commands/<name>.ts)
 npm run build               # 打包
 ```
+
+**大改动后必须回归**：跑 `npm run typecheck && npm run test:all`，全绿才算完成。改动只涉及单个命令/纯逻辑时至少跑 `npm run test`；改动 UI/主进程 IPC/交互流程时跑 `npm run test:all`。
+
+**UI e2e 分层**：`tests/ui` 覆盖可控交互（联想/quick 执行/Chat 流式/优雅失败），走真实 Electron（`out/` 构建产物）↔ mock gateway。依赖真实系统副作用的（Spotlight 全量搜、剪贴板写入）留在运行时 e2e/单测兜底，不进 UI e2e。
 
 **新增一个命令**：注册 `{ id, title, aliases, kind, schema, agentTool, run }` —— 悬浮联想、agent 工具、设置页即自动可用。
 
