@@ -4,10 +4,21 @@ import { appendFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ClipItem } from '../shared/types'
 
+/** 分词：拉丁/数字整词 + 连续 CJK 按字展开（“发票金额”能命中“发票/金额”）。 */
+function tokens(s: string): Set<string> {
+  const out = new Set<string>()
+  const lower = s.toLowerCase()
+  for (const m of lower.matchAll(/[a-z0-9]+|\p{L}+/gu)) out.add(m[0])
+  const han = lower.match(/[一-鿿]+/g) ?? []
+  for (const c of han.join('')) out.add(c)
+  out.delete('')
+  return out
+}
+
 /** token 交集分数（候选检索用，纯函数）。 */
 export function tokenOverlap(a: string, b: string): number {
-  const ta = new Set(a.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean))
-  const tb = new Set(b.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean))
+  const ta = tokens(a)
+  const tb = tokens(b)
   if (ta.size === 0 || tb.size === 0) return 0
   let inter = 0
   for (const t of tb) if (ta.has(t)) inter++

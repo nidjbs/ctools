@@ -100,6 +100,7 @@ export const officeRead: Command = {
   aliases: ['read_doc', '文档', 'office'],
   kind: 'quick',
   agentTool: true,
+  planSafe: true, // 只读
   enabled: true,
   schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   run: async (input, ctx) => {

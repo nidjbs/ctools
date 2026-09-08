@@ -9,6 +9,7 @@ export const findFile: Command = {
   kind: 'quick',
   enabled: true,
   agentTool: true,
+  planSafe: true, // 只读搜索
   run: async (input: unknown, ctx) => {
     const query = queryText(input)
     if (!query) return { type: 'text', text: '输入文件名/内容关键词' }

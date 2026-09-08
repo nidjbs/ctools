@@ -14,6 +14,7 @@ export function defaultConfig(): AppConfig {
     writeConfirm: 'auto',
     hotkey: 'CommandOrControl+Shift+Space',
     managedGateway: false,
+    webSearchEnabled: false,
     enabledCommands: {},
   }
 }

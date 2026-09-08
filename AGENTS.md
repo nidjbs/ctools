@@ -45,7 +45,7 @@ npm run dev                 # 本地跑 Electron
 npm run test                # 单测 + 运行时 e2e（vitest，tests/*.test.ts）
 npm run test:ui             # UI e2e（构建 out/ 后 Playwright 驱动真实 Electron ↔ mock gateway，tests/ui）
 npm run test:all            # 回归：test + test:ui 全量
-npm run typecheck           # tsc 双配置
+npm run typecheck           # tsc 双配置  
 npm run command:new <name>  # 生成新命令骨架(commands/<name>.ts)
 npm run build               # 打包
 ```

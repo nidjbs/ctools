@@ -14,16 +14,16 @@
 
 ## 语义召回（`clipboard <query>`）
 
-1. 需 `config.clipboardLocalAlias` 已配（否则返回提示）。
-2. 取 candidates → 组编号列表 → 调 `gateway.chat({ model: alias })` 请模型回最匹配编号。
+1. 取 candidates → 组编号列表 → 调 `gateway.chat({ model: alias })` 请模型回最匹配编号。
+2. alias 选择：`clipboardLocalAlias`（本地模型，隐私优先）**未配置时回退普通默认模型** `defaultAlias`。
 3. 解析失败回退第 1 条。返回该条文本。
 
-## 安全约束（远端模型不可信）
+## 安全约束
 
-- `clipboard` 命令 **agentTool=false** → 不进 agent 白名单；agent/远端模型永远接触不到剪贴板内容。
-- 语义召回只经 `clipboardLocalAlias`（指向本地模型）；若该 alias 配错成远端，属配置责任（Settings 需引导为本地）。
+- `clipboard` 命令 **agentTool=false** → 不进 agent 白名单。
+- **当前实现：未配本地 alias 时剪贴板内容会进入普通（远端）默认模型**——属用户本地策略；建议配置本地 alias 以保隐私（Settings → 偏好 clipboardLocalAlias）。
 
 ## 失败与边界
 
-- 无历史 → `剪贴板历史为空`；无匹配 → `无匹配`；本地 alias 未配置的 find → 提示配置。
+- 无历史 → `剪贴板历史为空`；无匹配 → `无匹配`；本地与默认 alias 都未配置 → 提示。
 - 系统剪贴板读取失败静默（不打断 watcher）。

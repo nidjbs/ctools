@@ -1,5 +1,5 @@
 // Agent loop：一次用户输入 → 流式回复 + 工具调用（分发到 agentTool 命令）→ 回填直至无工具。
-// 对应 docs §9.6 伪码。
+// 对应 docs §9.6 伪码。plan 模式 = 同一循环换只读工具集 + promptExtra（specs/plan-mode.md）。
 import type { Ctx, StreamHandlers, SessionEvent } from '../shared/types'
 import { Registry } from './registry'
 import { Session } from './session'
@@ -15,6 +15,16 @@ export interface AgentCallbacks extends StreamHandlers {
 
 const MAX_TURNS = 8
 
+export interface AgentLoopOpts {
+  signal?: AbortSignal
+  /** 本 pass 可用的工具名集合；默认 registry.toolIds()。 */
+  tools?: string[]
+  /** 临时 system 前缀：注入本 pass 每次模型请求，不落会话事件（规划/执行协议指令）。 */
+  promptExtra?: string
+  /** 本 pass 轮数上限；默认 MAX_TURNS。 */
+  maxTurns?: number
+}
+
 interface ToolCallMsg {
   id: string
   type: string
@@ -27,21 +37,19 @@ export function seedSystem(session: Session, content: string): void {
   session.append('system.context', { role: 'system', content })
 }
 
-export async function runAgentTurn(
+/** 多轮 agent 循环（不 seed user.message）。plan 执行/重规划 pass 用。 */
+export async function agentLoop(
   session: Session,
-  userText: string,
   ctx: Ctx,
   registry: Registry,
   cb: AgentCallbacks,
-  opts: { signal?: AbortSignal } = {},
+  opts: AgentLoopOpts = {},
 ): Promise<string> {
-  session.append('user.message', { role: 'user', content: userText })
-  cb.onEvent(session.transcript().at(-1)!)
-
-  for (let turn = 1; turn <= MAX_TURNS; turn++) {
+  const maxTurns = opts.maxTurns ?? MAX_TURNS
+  for (let turn = 1; turn <= maxTurns; turn++) {
     // 每次模型请求前做上下文压缩：裁剪大工具结果 + 接近满时 shadow 最旧消息
     compactIfNeeded(session)
-    const allowed = new Set(registry.toolIds())
+    const allowed = new Set(opts.tools ?? registry.toolIds())
     const tools = [...allowed]
       .map((id) => registry.get(id)!)
       .map(toolSpecOf)
@@ -61,10 +69,12 @@ export async function runAgentTurn(
       },
       onFinish: () => {},
     }
+    const messages = session.messages()
+    if (opts.promptExtra) messages.unshift({ role: 'system', content: opts.promptExtra })
     await ctx.gateway.chatStream(
-      { model: ctx.config.defaultAlias, messages: session.messages(), tools },
+      { model: ctx.config.defaultAlias, messages, tools },
       stream,
-      opts,
+      { signal: opts.signal },
     )
 
     session.append('assistant.message', {
@@ -118,4 +128,17 @@ export async function runAgentTurn(
     }
   }
   return ''
+}
+
+export async function runAgentTurn(
+  session: Session,
+  userText: string,
+  ctx: Ctx,
+  registry: Registry,
+  cb: AgentCallbacks,
+  opts: AgentLoopOpts = {},
+): Promise<string> {
+  session.append('user.message', { role: 'user', content: userText })
+  cb.onEvent(session.transcript().at(-1)!)
+  return agentLoop(session, ctx, registry, cb, opts)
 }

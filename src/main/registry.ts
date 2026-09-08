@@ -58,6 +58,13 @@ export class Registry {
       .map((c) => c.id)
   }
 
+  /** plan 模式规划工具集：只读、无副作用（planSafe: true 且启用）。specs/plan-mode.md。 */
+  planTools(): string[] {
+    return this.all()
+      .filter((c) => this.isOn(c) && c.agentTool && c.planSafe)
+      .map((c) => c.id)
+  }
+
   /** 悬浮框输入联想：命令+参数首词命中 > 前缀命中 > 包含命中。 */
   match(input: string): CommandMeta[] {
     const q = input.trim().toLowerCase().replace(/^\//, '')
