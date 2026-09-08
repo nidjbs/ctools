@@ -10,6 +10,7 @@ import { fileRead, fileList, fileWrite, fileRm } from '../../commands/file'
 import { clipboardCmd } from '../../commands/clipboard'
 import { officeRead } from '../../commands/office'
 import { bashCmd } from '../../commands/bash'
+import { webSearchCmd } from '../../commands/web_search'
 
 export interface App {
   config: AppConfig
@@ -18,7 +19,7 @@ export interface App {
 }
 
 /** 新增内置命令：注册到这里（或未来从目录按约定扫描）。 */
-const builtinCommands = [trans, findFile, fileRead, fileList, fileWrite, fileRm, clipboardCmd, officeRead, bashCmd]
+const builtinCommands = [trans, findFile, fileRead, fileList, fileWrite, fileRm, clipboardCmd, officeRead, bashCmd, webSearchCmd]
 
 export function createApp(configDir: string): App {
   const config = loadConfig(configDir)

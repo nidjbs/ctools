@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CommandMeta, CommandResult, SavedMeta } from '../../shared/types'
 import { TEMPLATES, type Template } from '../../shared/templates'
+import { quickEnter } from '../../shared/quickRun'
+import ModeChip from './ModeChip'
 
 declare global {
   interface Window {
@@ -12,17 +14,6 @@ declare global {
 const SETTINGS_KEYS = new Set(['settings', '设置', 'config', 'prefs'])
 
 type Item = { kind: 'cmd'; c: CommandMeta } | { kind: 'tpl'; t: Template }
-
-/** 提取命令参数：输入命中命令前缀后，剩余部分即参数。 */
-function paramFor(c: CommandMeta, q: string): string {
-  const lower = q.toLowerCase()
-  for (const n of [c.id, ...c.aliases]) {
-    const nl = n.toLowerCase()
-    if (lower === nl) return ''
-    if (lower.startsWith(nl + ' ')) return q.slice(nl.length).trim()
-  }
-  return q
-}
 
 /** 模板参数：输入以 模板 id/标题 开头则剩余为参数；否则整段作为参数（agent 类）。 */
 function templateParam(t: Template, q: string): string {
@@ -70,7 +61,12 @@ function ResultView({ result }: { result: CommandResult }) {
     return (
       <ul className="result-list">
         {result.items.map((it, i) => (
-          <li key={i} onClick={() => void window.api.system.pbcopy(it.copy ?? '')}>
+          <li
+            key={i}
+            onClick={() => {
+              if (it.copy) void window.api.system.pbcopy(it.copy)
+            }}
+          >
             <div className="li-title">{it.title}</div>
             {it.subtitle && <div className="li-sub">{it.subtitle}</div>}
           </li>
@@ -147,6 +143,18 @@ export default function App() {
     return found.map((t) => ({ kind: 'tpl', t }))
   })()
 
+  /** 回车是否会进 agent（自由内容 / agent 模板）→ 按需显示 直接/规划 开关，让冷启动首条也能预置 plan。 */
+  const willEnterAgent = ((): boolean => {
+    const q = input.trim()
+    if (!q) return false
+    if (q.startsWith('#')) return tplCtx?.kind === 'agent'
+    const picked = items[cursor]
+    if (picked?.kind === 'cmd') return false // quick 命令内联执行，不受模式
+    if (picked?.kind === 'tpl') return picked.t.kind === 'agent'
+    if (SETTINGS_KEYS.has(q.toLowerCase())) return false
+    return true // 无命令/模板命中 → 自由内容交给 agent
+  })()
+
   /** 跑一条 quick 命令（含 confirm 与错误展示）。执行中显示等待态。 */
   async function runQuick(id: string, param: string) {
     setBusy(true)
@@ -201,13 +209,14 @@ export default function App() {
     inputRef.current?.focus()
   }
 
-  async function onEnter() {
+  async function onEnter(idx: number = cursor) {
     if (busy || confirmReq) return
     if (result) {
       setResult(null)
       setInput('')
       return
     }
+    setCursor(idx)
     const q = input.trim()
     // 「#id 参数」模式
     if (q.startsWith('#')) {
@@ -218,7 +227,7 @@ export default function App() {
       await runTemplate(tplCtx, param)
       return
     }
-    const picked = items[cursor]
+    const picked = items[idx]
     if (picked?.kind === 'tpl') {
       const param = templateParam(picked.t, q)
       if (!param) {
@@ -230,12 +239,12 @@ export default function App() {
     }
     if (picked?.kind === 'cmd') {
       if (!q) return
-      const param = paramFor(picked.c, q)
-      if (!param) {
+      const t = quickEnter(picked.c, q)
+      if (!t.run) {
         setInput(picked.c.id + ' ')
         return
       }
-      await runQuick(picked.c.id, param)
+      await runQuick(picked.c.id, t.param)
       return
     }
     if (!q) return // 其余流程（设置/自由对话）都需要有输入
@@ -286,6 +295,12 @@ export default function App() {
   const isTplParam = input.trim().startsWith('#')
   const showHint = !isTplParam && !!input.trim() && items.length === 0 && !fatal
 
+  /** 输入变化：清掉上次命令的遗留结果，让下方内容跟着新输入联动。 */
+  function handleInput(v: string) {
+    setInput(v)
+    if (result) setResult(null)
+  }
+
   return (
     <div className="launcher">
       <input
@@ -293,10 +308,15 @@ export default function App() {
         className="bar"
         value={input}
         placeholder="模板或输入内容… (回车=交给 agent；#模板id 参数)"
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => handleInput(e.target.value)}
         onKeyDown={onKey}
         onKeyUp={(e) => e.key === 'Enter' && void onEnter()}
       />
+      {willEnterAgent && (
+        <div className="launch-mode">
+          <ModeChip />
+        </div>
+      )}
       <div className="body">
         {fatal && <div className="result-text fatal">{fatal}</div>}
         {!fatal && confirmReq ? (
@@ -316,7 +336,14 @@ export default function App() {
         ) : !fatal && !result ? (
           <ul className="matches">
             {items.map((it, i) => (
-              <li key={it.kind === 'cmd' ? it.c.id : it.t.id} className={i === cursor ? 'sel' : ''}>
+              <li
+                key={it.kind === 'cmd' ? it.c.id : it.t.id}
+                className={i === cursor ? 'sel' : ''}
+                onMouseMove={() => {
+                  if (cursor !== i) setCursor(i)
+                }}
+                onClick={() => void onEnter(i)}
+              >
                 {it.kind === 'cmd' ? (
                   <>
                     <span className="m-id">{it.c.id}</span>

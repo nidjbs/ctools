@@ -9,7 +9,7 @@ import { ChatManager, ChatIO } from './chat'
 import { ClipboardStore, startClipboardWatch } from './clipboard'
 import { listSaves, saveCommand, distillDraft, type DraftMeta } from './saves'
 import { bootstrapFromGw, reconcileDefaultAlias } from './gwConfig'
-import type { AppConfig, CommandMeta, Ctx, SessionEvent, SavedMeta } from '../shared/types'
+import type { AgentMode, AppConfig, CommandMeta, Ctx, SessionEvent, SavedMeta } from '../shared/types'
 
 // 测试隔离 seam：e2e 用 CTOOLS_USER_DATA 指向临时目录，默认零影响。
 if (process.env['CTOOLS_USER_DATA']) app.setPath('userData', process.env['CTOOLS_USER_DATA'])
@@ -177,8 +177,18 @@ app.whenReady().then(async () => {
   ctx.clipboard = {
     recent: (n) => Promise.resolve(clip.recent(n)),
     candidates: (q, n) => Promise.resolve(clip.candidates(q, n)),
+    current: async () => {
+      const t = await electronClipboard.readText()
+      clip.record(t) // 读到即记录，保证后续历史可用
+      return t.trim()
+    },
   }
-  startClipboardWatch(clip, () => electronClipboard.readText())
+  try {
+    clip.record(await electronClipboard.readText()) // 启动即收录当前剪贴板
+  } catch {
+    /* ignore */
+  }
+  startClipboardWatch(clip, async () => electronClipboard.readText())
 
   /** config 更新统一出口：原地合并 + 持久化 + 命令启停/热键热生效。 */
   const applyConfig = (patch: Partial<AppConfig>): AppConfig => {
@@ -238,6 +248,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('system:copy', (_e, text: string) => ctx.system.pbcopy(text))
   ipcMain.handle('window:hide', () => launcherWin?.hide())
   ipcMain.handle('window:openSettings', () => openSettingsWindow())
+  ipcMain.handle('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
 
   // Chat 会话（进入即让 Launcher 退场，错误由 ChatManager 落 agent.error 事件）
   ipcMain.handle('session:open', async (_e, first?: string) => {
@@ -254,6 +265,29 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:transcript', () => chat.transcript())
   ipcMain.handle('session:running', () => chat.isRunning())
   ipcMain.handle('session:pendingConfirm', () => currentConfirm)
+
+  // plan 模式：模式读写 / 计划批准 / 重规划 / 放弃 / 待批准拉取（specs/plan-mode.md）
+  const broadcastMode = () => {
+    const m = chat.getMode()
+    // 两窗同步：Chat 顶栏常驻 + Launcher 将进 agent 时按需显示同一开关
+    for (const w of [chatWin, launcherWin]) if (w && !w.isDestroyed()) w.webContents.send('session:mode', m)
+  }
+  const chatWinIO = (): { io: ReturnType<typeof ioFor>; win: BrowserWindow } => {
+    const win = chatWin
+    if (!win || win.isDestroyed()) throw new Error('对话窗口未打开')
+    win.focus()
+    return { io: ioFor(win), win }
+  }
+  ipcMain.handle('session:mode', () => chat.getMode())
+  ipcMain.handle('session:setMode', (_e, m: AgentMode) => {
+    const next = chat.setMode(m)
+    broadcastMode()
+    return next
+  })
+  ipcMain.handle('session:executePlan', () => chat.executePlan(chatWinIO().io))
+  ipcMain.handle('session:replan', (_e, feedback?: string) => chat.replan(chatWinIO().io, feedback))
+  ipcMain.handle('session:discardPlan', () => chat.discardPlan(chatWinIO().io))
+  ipcMain.handle('session:pendingPlan', () => chat.pendingPlanValue())
   // /save：LLM 蒸馏草稿 → 确认 → 保存
   ipcMain.handle('saves:list', (): SavedMeta[] =>
     listSaves(userData).map((s) => ({ id: s.id, title: s.title, instruction: s.instruction, paramHint: s.paramHint })),

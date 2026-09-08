@@ -40,6 +40,7 @@ export const fileRead: Command = {
   aliases: ['read', '读取', '读文件', 'cat'],
   kind: 'quick',
   agentTool: true,
+  planSafe: true, // 只读，可入 plan 规划工具集
   enabled: true,
   schema: PATH_SCHEMA,
   run: async (input, ctx) => {
@@ -64,6 +65,7 @@ export const fileList: Command = {
   aliases: ['ls', 'dir', '列出'],
   kind: 'quick',
   agentTool: true,
+  planSafe: true, // 只读
   enabled: true,
   schema: PATH_SCHEMA,
   run: async (input, ctx) => {

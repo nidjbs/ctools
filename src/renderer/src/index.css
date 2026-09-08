@@ -438,6 +438,65 @@ body {
   opacity: 0.9;
 }
 
+/* Chat 命令提示面板 */
+.chat-sug {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #333;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1d1d29;
+}
+.chat-sug li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.chat-sug li.sel {
+  background: #34344a;
+}
+.sug-key {
+  color: #7d9bff;
+  font-weight: 600;
+  min-width: 90px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+}
+.sug-desc {
+  color: #aaa;
+  font-size: 12px;
+}
+
+/* Chat quick 命令结果 */
+.cmd-out {
+  border: 1px solid #333;
+  border-radius: 10px;
+  background: #181824;
+  overflow: hidden;
+}
+.cmd-out-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #888;
+  border-bottom: 1px solid #333;
+}
+.cmd-out pre {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow: auto;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Chat 内人工在环批准（bash / 破坏性写删） */
 .approve-box {
   border: 1px solid #8a6d2f;
@@ -528,4 +587,150 @@ body {
   background: #a33;
   color: #fff;
   cursor: pointer;
+}
+
+/* ---- 直接/规划 模式开关：Chat 顶栏常驻；Launcher 将进 agent 时按需显示 ---- */
+.chat-modebar {
+  display: flex;
+  justify-content: flex-end;
+}
+.launch-mode {
+  display: flex;
+  justify-content: flex-end;
+}
+.mode-chip {
+  display: flex;
+  flex-shrink: 0;
+  border: 1px solid #3a3a50;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mode-chip button {
+  border: none;
+  background: #2a2a38;
+  color: #888;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mode-chip button:hover {
+  color: #eee;
+}
+.mode-chip button.sel {
+  background: #2f4fcf;
+  color: #fff;
+}
+.mode-chip button.sel.plan {
+  background: #b98a1e;
+  color: #111;
+}
+
+/* ---- 计划卡（Claude Code 风格）：内联在当前用户气泡后，默认展开步骤、执行逐条打勾 ---- */
+.plan-card {
+  border: 1px solid #b98a1e;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #332b1a;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: flex-start;
+  max-width: 92%;
+  flex-shrink: 0;
+}
+.pc-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pc-title {
+  font-size: 13px;
+  color: #e8c566;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pc-status {
+  font-size: 12px;
+  color: #c9a94f;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pc-status.run {
+  color: #7ce0a0;
+}
+.pc-status.ok {
+  color: #4caf7a;
+}
+.pc-status.err {
+  color: #ff9aa2;
+}
+.pc-steps {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pc-step {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.pc-ico {
+  width: 14px;
+  flex-shrink: 0;
+  font-size: 11px;
+  text-align: center;
+}
+.pc-num {
+  color: #c9a94f;
+  min-width: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.pc-step-t {
+  color: #ddd;
+  word-break: break-word;
+}
+.pc-step.todo .pc-ico {
+  color: #777;
+}
+.pc-step.todo .pc-num {
+  color: #777;
+}
+.pc-step.active .pc-ico {
+  color: #b98a1e;
+}
+.pc-step.active .pc-step-t {
+  color: #e8c566;
+}
+.pc-step.done {
+  opacity: 0.85;
+}
+.pc-step.done .pc-ico {
+  color: #4caf7a;
+}
+.pc-body {
+  font-size: 13px;
+}
+.pc-raw-toggle {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: #c9a94f;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+.pc-raw {
+  font-size: 13px;
+  max-height: 32vh;
+  overflow: auto;
+  border-top: 1px solid #4a3f24;
+  padding-top: 8px;
 }

@@ -2,6 +2,9 @@
 
 export type CommandKind = 'quick' | 'chat' | 'confirm'
 
+/** agent 对话模式：normal=现状直跑；plan=先规划、批准后才执行（specs/plan-mode.md）。 */
+export type AgentMode = 'normal' | 'plan'
+
 export type CommandResult =
   | { type: 'text'; text: string }
   | { type: 'list'; items: { title: string; subtitle?: string; copy?: string }[] }
@@ -19,6 +22,8 @@ export interface CommandMeta {
 }
 
 export interface Command extends CommandMeta {
+  /** 只读、无副作用：可进入 plan 模式规划工具集。默认 false。 */
+  planSafe?: boolean
   /** 声明式参数 schema（悬浮框与 agent 共用校验）。 */
   schema?: unknown
   /** 执行；ctx 携带 config / gateway / system 集成。 */
@@ -61,6 +66,8 @@ export interface Ctx {
   clipboard?: {
     recent(n: number): Promise<ClipItem[]>
     candidates(query: string, n: number): Promise<ClipItem[]>
+    /** 读取当前剪贴板文本（顺带记录），供命令即时使用。 */
+    current?(): Promise<string>
   }
   /** 仅 commands:confirm IPC 设置：写/删命令两段 confirm 的放行标记。 */
   confirmApproved?: boolean
@@ -90,6 +97,8 @@ export interface AppConfig {
   hotkey: string
   /** 启动时自动拉起并托管 gateway（需 gw CLI；默认关，避免意外拉起外部进程）。 */
   managedGateway?: boolean
+  /** 联网搜索开关（默认关；开启后 web_search 对 agent/Launcher 可用，调用仍需批准）。 */
+  webSearchEnabled?: boolean
   enabledCommands: Record<string, boolean>
 }
 
@@ -105,6 +114,9 @@ export type SessionEventType =
   | 'tool.result'
   | 'agent.error'
   | 'context.compact'
+  | 'plan.propose'
+  | 'plan.approved'
+  | 'plan.rejected'
   | 'session.ended'
 
 export interface SessionEvent {
@@ -154,6 +166,8 @@ export interface CtoolsApi {
   window: {
     hide(): Promise<void>
     openSettings(): Promise<void>
+    /** 关闭当前窗口（收起界面，进程保留）。 */
+    close(): Promise<void>
   }
   system: {
     pbcopy(text: string): Promise<boolean>
@@ -169,6 +183,17 @@ export interface CtoolsApi {
     confirm(id: number, ok: boolean): Promise<void>
     /** 待批确认（晚挂载的渲染层主动拉取，防事件丢失）。 */
     pendingConfirm(): Promise<{ id: number; tool: string; message: string } | null>
+    /** 当前对话模式（Chat 顶栏 / Launcher 将进 agent 时 直接/规划 chip 同源）。 */
+    mode(): Promise<AgentMode>
+    setMode(m: AgentMode): Promise<AgentMode>
+    /** 批准当前待批准计划 → 执行 pass。 */
+    executePlan(): Promise<void>
+    /** 按反馈重跑一轮规划 pass（content=feedback 落 plan.rejected）。 */
+    replan(feedback?: string): Promise<void>
+    /** 放弃待批准计划（落 plan.rejected，不回跑）。 */
+    discardPlan(): Promise<void>
+    /** 待批准计划（晚挂载拉取，防事件丢失）。 */
+    pendingPlan(): Promise<{ seq: number; text: string } | null>
   }
   /** /save 沉淀复用模板（LLM 蒸馏 → 确认 → 保存）。 */
   saves: {
@@ -184,6 +209,8 @@ export interface CtoolsApi {
   onSessionDelta(cb: (text: string) => void): () => void
   /** 订阅运行态变化（start/end），用于停止「回答中」态。 */
   onSessionRunning(cb: (running: boolean) => void): () => void
+  /** 订阅对话模式变化（两窗 chip 同步）。 */
+  onSessionMode(cb: (m: AgentMode) => void): () => void
   /** Launcher 每次唤起时通知（清空输入、重新聚焦）。 */
   onLauncherShow(cb: () => void): () => void
 }

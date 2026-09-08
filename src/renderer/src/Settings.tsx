@@ -51,6 +51,7 @@ export default function Settings() {
         fileRoots: cfg.fileRoots.map((p) => p.trim()).filter(Boolean),
         writeConfirm: cfg.writeConfirm,
         managedGateway: cfg.managedGateway,
+        webSearchEnabled: cfg.webSearchEnabled,
       })
       setCfg(next)
       // 开启托管 → 立即拉起（spec：开启即在本机启动）
@@ -122,7 +123,12 @@ export default function Settings() {
   if (!cfg) return <div className="settings pad">加载中…</div>
 
   return (
-    <div className="settings pad">
+    <div
+      className="settings pad"
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') void window.api.window.close() // 收起界面
+      }}
+    >
       <h1>设置</h1>
       {msg && <div className={`notice ${msg.kind}`}>{msg.text}</div>}
 
@@ -152,6 +158,14 @@ export default function Settings() {
             onChange={(e) => set({ managedGateway: e.target.checked })}
           />
           <span>启动时自动托管 gateway（需 gw CLI）——开启保存后立即在本机拉起</span>
+        </label>
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={!!cfg.webSearchEnabled}
+            onChange={(e) => set({ webSearchEnabled: e.target.checked })}
+          />
+          <span>联网搜索（web_search）——开启后 agent 可搜索，每次调用仍会先请求你批准</span>
         </label>
       </section>
 
