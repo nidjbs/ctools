@@ -1,17 +1,16 @@
 # cTools 架构设计
 
 状态：设计定稿（2026-09）。技术栈已拍板：**Electron + React + TypeScript（方向 A：全 TS）**。
-能力从 go-ai-gateway `cli/` 迁移而来（功能迁移，不删原 CLI）。
 
 ## 1. 进程模型
 
 ```
 ┌─ Electron Main (Node/TS) ──────────────────────────────────────┐
-│  Agent Runtime（内化 gw 能力）                                   │
+│  Agent Runtime（agent 循环 + 会话 + 工具）                        │
 │   ├ CommandRegistry + 内置命令                                   │
 │   ├ agent loop / session(事件溯源) / context(压缩)               │
 │   ├ tools (file / clipboard / find_file / office_read …)        │
-│   ├ gateway client（HTTP → 本地 go-ai-gateway, 唯一 LLM 后端）   │
+│   ├ gateway client（HTTP → 本地模型网关, 唯一 LLM 后端）         │
 │   ├ gateway manager（自动拉起 / reload / 重启, 见 §6）           │
 │   ├ config 存储 + 系统集成(pbcopy / mdfind / 全局热键 / 剪贴板watch)│
 │  preload (contextBridge → 类型化 RPC + 事件流)                   │
@@ -57,20 +56,22 @@ type Result =
 
 **开发扩展**：`npm run command:new` 生成 `commands/xxx.ts`，实现 `run` + 声明 aliases/agentTool 即注册，热更新。
 
-## 3. Agent Runtime（自 go-ai-gateway cli 迁移）
+## 3. Agent Runtime
 
-| gw (Go) | cTools (TS) | 职责 |
-|---|---|---|
-| `sessionlog.go` | `runtime/session.ts` | 事件溯源：seq/role/tool_calls/arguments/source/shadow；surface 投影；compaction；resume |
-| `context.go` | `runtime/context.ts` | 滑动窗口压缩（head+tail 裁剪 + forceCompact/近满触发） |
-| `agent.go` | `runtime/agent.ts` | agent loop：模型→解析 tool_calls→分发→回填→流式 |
-| `tools.go` | `runtime/tools/file.ts` | 文件 CRUD + file_roots 权限 + write_confirm |
-| `clipboard.go` | `runtime/clipboard.ts` | 剪贴板 watcher + 本地模型召回 |
-| `cmd_*.go` | `commands/*.ts` | trans/ask/run/schedule/… 内置命令 |
-| `client.go` | `runtime/gateway.ts` | OpenAI 兼容流式客户端 + usage + X-Request-Id |
-| `config.go` | `runtime/config.ts` | 应用配置 |
+全部以 TS 实现，模块职责：
 
-**安全模型（远端模型不可信）继承**：file_roots 作用域；写操作经 `confirm`；剪贴板内容只走本地模型 alias（远端 agent 不接触）；无网络工具；会话事件无损、`/save` 沉淀可复用命令。
+| 模块 | 职责 |
+|---|---|
+| `src/main/session.ts` | 事件溯源：seq/role/tool_calls/arguments；surface 投影；compaction；resume |
+| `src/main/context.ts` | 滑动窗口压缩（head+tail 裁剪 + forceCompact/近满触发） |
+| `src/main/agent.ts` | agent loop：模型→解析 tool_calls→分发→回填→流式 |
+| `commands/file.ts` + `shared/filePolicy.ts` | 文件工具 + file_roots 权限 + write_confirm |
+| `src/main/clipboard.ts` | 剪贴板 watcher + 本地模型召回 |
+| `commands/*.ts` | trans/find_file/file/office_read/clipboard/bash/web_search 内置命令 |
+| `src/main/gatewayClient.ts` | 流式 LLM 客户端（usage + 请求追踪） |
+| `src/main/config.ts` | 应用配置读写 |
+
+**安全模型（远端模型不可信）**：file_roots 作用域；写操作经 `confirm`；剪贴板内容只走本地模型 alias（远端 agent 不接触）；无网络工具；会话事件无损、`/save` 沉淀可复用命令。
 
 ## 4. Launcher ↔ Chat 双形态
 
@@ -86,7 +87,7 @@ type Result =
 
 ## 6. Gateway 生命周期管理
 
-cTools 负责本地 go-ai-gateway 的起停与配置热更（对应原 gw `up/down/reload` 的能力）。
+cTools 负责本地模型网关（OpenAI 兼容）的起停与配置热更（探测就绪 / 拉起 / reload / restart，见 §6）。
 
 - **启动时自动拉起**：`ensureGateway()` —— 探测配置的 healthz/readyz；未就绪则：
   1. 定位 gateway 二进制（cTools 管理的副本 / GW_GATEWAY_BIN / 从 gateway 仓库源码构建）。
@@ -98,7 +99,7 @@ cTools 负责本地 go-ai-gateway 的起停与配置热更（对应原 gw `up/do
   - 界面给出"哪些项适合 reload、哪些需 restart"的提示。
 - **生命周期**：cTools 退出时可选择"保留 gateway 常驻"或"随 cTools 关闭"（可配置）。
 
-## 7. 迁移顺序（建议 v1）
+## 7. 里程碑顺序（建议 v1）
 
 1. 仓库骨架：Electron + React/TS + CommandRegistry + gateway client + gateway manager。
 2. 首批命令：trans / ask / clipboard（watcher+本地召回）/ find_file（mdfind）/ file 工具。
@@ -108,10 +109,10 @@ cTools 负责本地 go-ai-gateway 的起停与配置热更（对应原 gw `up/do
 ## 8. 明确不做（v1）
 
 - 不引入网络工具（保持"无外传"安全边界）。
-- 不迁移原 CLI 的 `up/down/reload` 运维形态——由 gateway manager 在 UI 内替代。
+- 不做独立 CLI 式起停界面——gateway 的起停与热更统一由 gateway manager（UI 内）承担。
 - 不做多用户 / 云同步。
 
-## 9. 可执行契约（供构建与迁移参考）
+## 9. 可执行契约（供实现参考）
 
 ### 9.1 目录布局
 
@@ -124,7 +125,7 @@ ctools/
       registry.ts             # CommandRegistry + registerBuiltins
       agent.ts                # agent loop（流式 + tool_calls）
       session.ts              # 事件溯源会话（surface/compact/resume）
-      gatewayClient.ts        # OpenAI 兼容流式客户端
+      gatewayClient.ts        # 流式 LLM 客户端
       gatewayManager.ts       # 拉起 / reload / restart（§6）
       config.ts               # 读写 userData/config.json
       ipc.ts                  # preload 暴露的类型化 api
@@ -185,7 +186,7 @@ export interface AppConfig {
   commands: Record<string, boolean>;   // 启停
 }
 
-// 会话事件（事件溯源, 与 gw sessionlog schema 对齐）
+// 会话事件（事件溯源）
 export type SessionEventType =
   | "session.started" | "system.context" | "user.message"
   | "model.request" | "assistant.message" | "tool.call" | "tool.result"
@@ -250,7 +251,7 @@ class GatewayManager {
 }
 ```
 
-### 9.6 agent loop（伪码，内化 gw `agent.go`）
+### 9.6 agent loop（伪码）
 
 ```
 turn(messages):

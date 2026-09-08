@@ -1,4 +1,4 @@
-// UI e2e：plan 模式（Claude Code 风格计划卡，specs/plan-mode.md）。
+// UI e2e：plan 模式（计划卡，specs/plan-mode.md）。
 // - Launcher：未输入时不显示 直接/规划；输入自由内容（将进 agent）按需浮现 chip → 可切 规划 → 冷启动首条即规划。
 // - Chat：计划以内联计划卡呈现，默认展开可见编号步骤；批准后按「第 N 步」标记逐条打勾；replan 版本递增；放弃后卡片收起。
 // mock gateway：带工具的请求先回只读工具(find_file)调用；纯文本请求由 streamReply 按请求次数给出（首次=计划，其后=执行输出）。

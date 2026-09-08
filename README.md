@@ -1,6 +1,6 @@
 # cTools
 
-> 你的个人 AI 助手 —— 一个 uTools / Raycast 式的悬浮命令面板，把日常简单、重复的工作收敛到一个热键输入框里。
+> 你的个人 AI 助手 —— 一个用全局热键唤起的悬浮命令面板，把日常简单、重复的工作收敛到一个输入框里。
 
 按一下热键，输入工具关键词或一段自然语言：cTools 会**联想/推测你要的命令**——简单的事就地给结果（译文、路径、剪贴板命中），复杂或开放的事自动唤起一个**流式 agent 对话窗**来替你完成。
 
@@ -10,7 +10,7 @@
 - **安全默认**：文件限定可读根目录、写/删/执行 shell 都要你批准、剪贴板敏感内容只走本地模型、联网默认关闭
 - 把一次满意的对话 **`/save` 沉淀成可复用模板**，下次首页一键直达
 
-> LLM 后端是独立的本地网关 [go-ai-gateway](https://github.com/nidjbs/go-ai-gateway)（HTTP，纯本机），cTools 只负责指挥它。
+> LLM 后端是跑在本机的一个 **OpenAI 兼容本地模型网关**（默认 `http://127.0.0.1:8080`），cTools 只负责指挥它。
 > 状态：**MVP**（主流程已贯通，定位个人工具，尚未打磨打包分发）。
 
 ---
@@ -19,7 +19,7 @@
 
 ### 1. 准备模型网关
 
-cTools 本身不带模型。需要本机有一个可用的 [go-ai-gateway](https://github.com/nidjbs/go-ai-gateway)（默认地址 `http://127.0.0.1:8080`），并配置好模型 provider 与别名。
+cTools 本身不带模型。需要先在本机运行一个 OpenAI 兼容的本地模型网关（默认地址 `http://127.0.0.1:8080`），并在其中配置好模型 provider 与别名。
 
 - 默认模型别名 `defaultAlias = chat`：可指向远端模型（普通任务）。
 - `clipboardLocalAlias`（可选）：**本地模型**别名，仅用于剪贴板语义召回（隐私优先）。不配置则退回普通模型。
@@ -136,7 +136,7 @@ npm run dev          # 本地开发运行（Electron）
 ## 常见问题
 
 **命令提示「gateway 不可达 / 别名无效」？**
-确保 go-ai-gateway 正在运行、地址与 `defaultAlias` 正确。可在设置窗里查看连接状态、reload，或开启「托管 gateway」让它自动拉起。
+确保本地模型网关正在运行、地址与 `defaultAlias` 正确。可在设置窗里查看连接状态、reload，或开启「托管 gateway」让它自动拉起。
 
 **我想让 agent 能改文件 / 执行命令。**
 写、删、bash 本就开放给 agent，但它们只能在你批准后真正落盘/执行——这是设计不是 bug。
@@ -150,7 +150,7 @@ npm run dev          # 本地开发运行（Electron）
 
 > 详细规范见 **[AGENTS.md](AGENTS.md)**（架构不变量 / 开发守则）与 **[docs/architecture.md](docs/architecture.md)**（进程模型 / 契约）。
 
-**一句话架构**：一切能力 = 一个 `Command`（注册表驱动悬浮联想 / agent 工具 / 设置启停）；agent runtime 与命令逻辑**全部内化在 Electron Main（TS）**，UI（React）只是视图，经 preload 的类型化 IPC 交互；LLM 唯一出口是本地 go-ai-gateway。
+**一句话架构**：一切能力 = 一个 `Command`（注册表驱动悬浮联想 / agent 工具 / 设置启停）；agent runtime 与命令逻辑**全部内化在 Electron Main（TS）**，UI（React）只是视图，经 preload 的类型化 IPC 交互；LLM 唯一出口是本地模型网关（OpenAI 兼容）。
 
 ```
 src/main/        命令注册表 + agent runtime + gateway 客户端/管理 + 会话/剪贴板/配置

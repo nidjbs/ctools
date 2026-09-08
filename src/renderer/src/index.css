@@ -625,7 +625,7 @@ body {
   color: #111;
 }
 
-/* ---- 计划卡（Claude Code 风格）：内联在当前用户气泡后，默认展开步骤、执行逐条打勾 ---- */
+/* ---- 计划卡：内联在当前用户气泡后，默认展开步骤、执行逐条打勾 ---- */
 .plan-card {
   border: 1px solid #b98a1e;
   border-radius: 10px;

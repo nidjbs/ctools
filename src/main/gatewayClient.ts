@@ -1,4 +1,4 @@
-// OpenAI 兼容客户端 —— cTools 到本地 go-ai-gateway 的唯一模型出口。
+// 流式 LLM 客户端 —— cTools 到本地模型网关（go-ai-gateway）的唯一模型出口。
 // 无任何硬编码 URL/别名；全部来自 AppConfig。
 import type { AppConfig, StreamHandlers } from '../shared/types'
 

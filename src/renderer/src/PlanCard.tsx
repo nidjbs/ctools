@@ -1,4 +1,4 @@
-// 计划卡（Claude Code 风格）：内联在当前用户气泡后，默认展开可见编号步骤。
+// 计划卡：内联在当前用户气泡后，默认展开可见编号步骤。
 // pending 态 = 反馈框 + 批准/重规划/放弃；exec 态 = 按「第 N 步」标记逐条打勾。见 specs/plan-mode.md。
 import { useMemo, useState } from 'react'
 import type { SessionEvent } from '../../shared/types'

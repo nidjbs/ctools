@@ -2,7 +2,7 @@
   "name": "ctools",
   "version": "0.1.0",
   "private": true,
-  "description": "你的个人 AI 助手 —— uTools 式悬浮命令面板",
+  "description": "你的个人 AI 助手 —— 全局热键唤起的悬浮命令面板",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

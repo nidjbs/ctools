@@ -102,7 +102,7 @@ export interface AppConfig {
   enabledCommands: Record<string, boolean>
 }
 
-// ---------- 会话（事件溯源, 与 gw sessionlog schema 对齐） ----------
+// ---------- 会话（事件溯源，无损留痕） ----------
 
 export type SessionEventType =
   | 'session.started'

@@ -1,4 +1,4 @@
-// /save：LLM 蒸馏草稿（JSON 解析/回退）+ 存取（同名覆盖/slug）。对齐 gw /save。
+// /save：LLM 蒸馏草稿（JSON 解析/回退）+ 存取（同名覆盖/slug）。
 import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

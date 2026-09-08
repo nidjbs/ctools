@@ -1,4 +1,4 @@
-# cTools — Claude Code 入口
+# cTools — 工程守则与开发入口
 
 开发规范、架构不变量与安全守则在 **[AGENTS.md](AGENTS.md)**；完整设计在 **[docs/architecture.md](docs/architecture.md)**。
 
