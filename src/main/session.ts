@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto'
 import { appendFileSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import type { SessionEvent, SessionEventType } from '../shared/types'
+import type { SessionEvent, SessionEventType, SessionSummary } from '../shared/types'
 
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool'
@@ -11,6 +11,55 @@ export type ChatMessage = {
   reasoning_content?: string
   tool_calls?: unknown[]
   tool_call_id?: string
+}
+
+const TITLE_MAX = 28
+
+/** 从首条 user.message 截 title；无则占位。 */
+export function titleOf(events: SessionEvent[]): string {
+  for (const e of events) {
+    if (e.type === 'user.message') {
+      const t = (e.content ?? '').replace(/\s+/g, ' ').trim()
+      if (t) return t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX)}…` : t
+    }
+  }
+  return '（空会话）'
+}
+
+/** 扫描 dir 下 *.jsonl，按 mtime 降序，返回最近若干会话摘要（title 取自首条 user.message）。 */
+export function listSessions(dir: string, max = 10): SessionSummary[] {
+  let files: string[]
+  try {
+    files = readdirSync(dir, { withFileTypes: true })
+      .filter((f) => f.isFile() && f.name.endsWith('.jsonl'))
+      .sort((a, b) => statSync(join(dir, b.name)).mtimeMs - statSync(join(dir, a.name)).mtimeMs)
+      .slice(0, max)
+      .map((f) => f.name.slice(0, -'.jsonl'.length))
+  } catch {
+    return [] // 目录不存在/不可读 → 空
+  }
+  return files.map((id) => {
+    let title = '（空会话）'
+    let updatedAt = ''
+    try {
+      // 只读文件头定位首条 user.message，避免整读大会话
+      const raw = readFileSync(join(dir, `${id}.jsonl`), 'utf-8').split('\n').slice(0, 200)
+      const evs: SessionEvent[] = []
+      for (const line of raw) {
+        if (!line.trim()) continue
+        try {
+          evs.push(JSON.parse(line) as SessionEvent)
+        } catch {
+          /* 忽略坏行 */
+        }
+      }
+      title = titleOf(evs)
+      updatedAt = statSync(join(dir, `${id}.jsonl`)).mtime.toISOString()
+    } catch {
+      /* 单文件不可读 → 保留占位 */
+    }
+    return { id, title, updatedAt }
+  })
 }
 
 /** 扫描 dir 下 *.jsonl，返回 mtime 最新（最近会话）的 session id。 */

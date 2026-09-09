@@ -13,7 +13,7 @@ export interface AgentCallbacks extends StreamHandlers {
   onConfirm?(tool: string, message: string): Promise<boolean>
 }
 
-const MAX_TURNS = 8
+const MAX_TURNS = 50 // 单次用户输入的最大模型请求轮次上限（防 runaway；用户可随时取消）
 
 export interface AgentLoopOpts {
   signal?: AbortSignal

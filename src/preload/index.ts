@@ -38,9 +38,14 @@ const api: CtoolsApi = {
   },
   system: {
     pbcopy: handle('system:copy'),
+    reveal: handle('system:reveal'),
+    open: handle('system:open'),
   },
   session: {
     open: handle('session:open'),
+    recent: handle('session:recent'),
+    attach: handle('session:attach'),
+    newSession: handle('session:new'),
     send: handle('session:send'),
     cancel: handle('session:cancel'),
     transcript: handle('session:transcript'),
@@ -58,6 +63,7 @@ const api: CtoolsApi = {
     list: handle('saves:list'),
     draft: handle('saves:draft'),
     save: handle('saves:save'),
+    remove: handle('saves:remove'),
   },
   onSessionEvent: (cb) => {
     const listener = (_e: unknown, ev: SessionEvent) => cb(ev)
@@ -88,6 +94,11 @@ const api: CtoolsApi = {
     const listener = (_e: unknown, m: AgentMode) => cb(m)
     ipcRenderer.on('session:mode', listener)
     return () => ipcRenderer.removeListener('session:mode', listener)
+  },
+  onSessionReset: (cb) => {
+    const listener = () => cb()
+    ipcRenderer.on('session:reset', listener)
+    return () => ipcRenderer.removeListener('session:reset', listener)
   },
 }
 

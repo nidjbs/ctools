@@ -3,7 +3,7 @@ import { describe, expect, it, beforeAll, afterAll } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { saveCommand, listSaves, distillDraft, extractJson, transcriptDigest, type DraftCtx } from '../src/main/saves'
+import { saveCommand, listSaves, removeSave, distillDraft, extractJson, transcriptDigest, type DraftCtx } from '../src/main/saves'
 import type { SessionEvent } from '../src/shared/types'
 
 let dir: string
@@ -33,6 +33,21 @@ describe('saveCommand / listSaves', () => {
   it('空白名有兜底 id', () => {
     const c = saveCommand(dir, { title: '   ', instruction: 'x', paramHint: '' })
     expect(c.id).toBe('saved')
+  })
+
+  it('remove 删除指定 slug；不存在幂等不误删', () => {
+    const a = saveCommand(dir, { title: '保留的模板', instruction: 'x', paramHint: '' })
+    const b = saveCommand(dir, { title: '要删的模板', instruction: 'y', paramHint: '' })
+    const before = listSaves(dir).length
+    removeSave(dir, b.id)
+    let rest = listSaves(dir)
+    expect(rest).toHaveLength(before - 1)
+    expect(rest.map((s) => s.id)).not.toContain(b.id)
+    expect(rest.map((s) => s.id)).toContain(a.id)
+    removeSave(dir, b.id) // 已删 → 幂等
+    removeSave(dir, 'no-such-slug')
+    rest = listSaves(dir)
+    expect(rest).toHaveLength(before - 1) // 两次幂等删除不改变最新状态
   })
 })
 

@@ -47,11 +47,13 @@ export default function Settings() {
         adminUrl: cfg.adminUrl.trim(),
         adminToken: cfg.adminToken,
         defaultAlias: cfg.defaultAlias.trim(),
+        clipboardLocalAlias: cfg.clipboardLocalAlias?.trim(),
         hotkey: cfg.hotkey.trim(),
         fileRoots: cfg.fileRoots.map((p) => p.trim()).filter(Boolean),
         writeConfirm: cfg.writeConfirm,
         managedGateway: cfg.managedGateway,
         webSearchEnabled: cfg.webSearchEnabled,
+        bashNetwork: cfg.bashNetwork,
       })
       setCfg(next)
       // 开启托管 → 立即拉起（spec：开启即在本机启动）
@@ -167,6 +169,14 @@ export default function Settings() {
           />
           <span>联网搜索（web_search）——开启后 agent 可搜索，每次调用仍会先请求你批准</span>
         </label>
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={!!cfg.bashNetwork}
+            onChange={(e) => set({ bashNetwork: e.target.checked })}
+          />
+          <span>bash 联网——默认关（命令经 OS 沙箱禁网）；开启后 bash 可联网，执行仍每次人工确认</span>
+        </label>
       </section>
 
       <section>
@@ -192,6 +202,17 @@ export default function Settings() {
                 <option key={m} value={m} />
               ))}
             </datalist>
+          </label>
+          <label>
+            剪贴板本地模型别名
+            <input
+              className="bar"
+              list="alias-list"
+              placeholder="留空则剪贴板召回退回远端（不推荐）"
+              value={cfg.clipboardLocalAlias ?? ''}
+              onChange={(e) => set({ clipboardLocalAlias: e.target.value })}
+            />
+            <span className="hint">剪贴板语义召回只走本地模型别名（隐私），留空则用默认/远端。</span>
           </label>
         </div>
       </section>

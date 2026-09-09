@@ -60,6 +60,24 @@ export class ChatManager {
     return s
   }
 
+  /** 载入历史会话续聊：重放指定 id 并设为活动（不自动发消息）。running 守卫。 */
+  async attach(id: string): Promise<{ id: string }> {
+    if (this.running) throw new Error('上一轮仍在运行，请等待或取消')
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new Error('非法的会话 id')
+    if (!this.sessionsDir) throw new Error('未配置会话目录')
+    this.session = Session.fromJSONL(this.sessionsDir, id) // 文件不存在/坏 → 上抛
+    this.pendingPlan = null
+    return { id: this.session.id }
+  }
+
+  /** 另起全新会话（Chat「＋新会话」）。running 守卫。 */
+  async fresh(): Promise<{ id: string }> {
+    if (this.running) throw new Error('上一轮仍在运行，请等待或取消')
+    this.session = this.newSession()
+    this.pendingPlan = null
+    return { id: this.session.id }
+  }
+
   private cbs(io: ChatIO): AgentCallbacks {
     return {
       onContent: (d) => io.onDelta(d),

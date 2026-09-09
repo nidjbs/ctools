@@ -1,5 +1,6 @@
 // Electron Main：窗口 + IPC。逻辑全在 runtime 模块；这里只装配。
 import { app, BrowserWindow, globalShortcut, ipcMain, clipboard as electronClipboard } from 'electron'
+import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { createApp } from './app'
 import { GatewayManager } from './gatewayManager'
@@ -7,7 +8,9 @@ import { saveConfig } from './config'
 import { UsageStore } from './usage'
 import { ChatManager, ChatIO } from './chat'
 import { ClipboardStore, startClipboardWatch } from './clipboard'
-import { listSaves, saveCommand, distillDraft, type DraftMeta } from './saves'
+import { listSaves, saveCommand, removeSave, distillDraft, type DraftMeta } from './saves'
+import { listSessions } from './session'
+import { realInside } from './pathGuard'
 import { bootstrapFromGw, reconcileDefaultAlias } from './gwConfig'
 import type { AgentMode, AppConfig, CommandMeta, Ctx, SessionEvent, SavedMeta } from '../shared/types'
 
@@ -170,7 +173,8 @@ app.whenReady().then(async () => {
   bootstrapFromGw(userData, ctx.config, (c) => saveConfig(userData, c))
   const gateway = new GatewayManager(ctx.config, userData)
   const usage = new UsageStore(userData)
-  const chat = new ChatManager(ctx, registry, join(userData, 'sessions'))
+  const sessionsDir = join(userData, 'sessions')
+  const chat = new ChatManager(ctx, registry, sessionsDir)
 
   // 剪贴板历史：装配进 ctx 供 clipboard 命令，并常驻 watcher 轮询写入
   const clip = new ClipboardStore(join(userData, 'clipboard.jsonl'))
@@ -246,6 +250,16 @@ app.whenReady().then(async () => {
     return s
   })
   ipcMain.handle('system:copy', (_e, text: string) => ctx.system.pbcopy(text))
+  // 文件动作：file_roots 越界（含 symlink 逃逸）把关后交系统 open（-R = Finder 定位）。越界/失败返回 false。
+  const openBySystem = async (reveal: boolean, target: string): Promise<boolean> => {
+    const abs = await realInside(ctx.config.fileRoots, target)
+    if (!abs) return false
+    return new Promise((resolve) => {
+      execFile('open', reveal ? ['-R', abs] : [abs], (err) => resolve(!err))
+    })
+  }
+  ipcMain.handle('system:reveal', (_e, p: string) => openBySystem(true, p))
+  ipcMain.handle('system:open', (_e, p: string) => openBySystem(false, p))
   ipcMain.handle('window:hide', () => launcherWin?.hide())
   ipcMain.handle('window:openSettings', () => openSettingsWindow())
   ipcMain.handle('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
@@ -254,6 +268,24 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:open', async (_e, first?: string) => {
     const win = openChatWindow()
     return chat.open(first, ioFor(win))
+  })
+  // 最近会话（Launcher 首页 chips）；attach/new 切活动会话 → 已开的 Chat 需 reset 重同步
+  ipcMain.handle('session:recent', () => listSessions(sessionsDir, 5))
+  ipcMain.handle('session:attach', async (_e, id: string) => {
+    const existed = chatWin && !chatWin.isDestroyed()
+    const prev = chat.sessionId()
+    const r = await chat.attach(id)
+    const win = openChatWindow()
+    if (existed && prev !== r.id) win.webContents.send('session:reset')
+    return r
+  })
+  ipcMain.handle('session:new', async () => {
+    const existed = chatWin && !chatWin.isDestroyed()
+    const prev = chat.sessionId()
+    const r = await chat.fresh()
+    const win = openChatWindow()
+    if (existed && prev !== r.id) win.webContents.send('session:reset')
+    return r
   })
   ipcMain.handle('session:send', (_e, text: string) => {
     const win = chatWin
@@ -299,6 +331,7 @@ app.whenReady().then(async () => {
     const s = saveCommand(userData, d)
     return { id: s.id, title: s.title, instruction: s.instruction, paramHint: s.paramHint }
   })
+  ipcMain.handle('saves:remove', (_e, id: string) => removeSave(userData, id))
   ipcMain.handle('tool:confirm', (_e, id: number, ok: boolean) => {
     pendingConfirms.get(id)?.(!!ok)
   })

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CommandMeta, CommandResult, SavedMeta } from '../../shared/types'
+import type { CommandMeta, CommandResult, SavedMeta, SessionSummary } from '../../shared/types'
 import { TEMPLATES, type Template } from '../../shared/templates'
 import { quickEnter } from '../../shared/quickRun'
 import ModeChip from './ModeChip'
@@ -53,9 +53,15 @@ function matchTemplates(q: string, list: Template[]): Template[] {
   return list.filter((t) => t.id.toLowerCase().includes(s) || t.title.toLowerCase().includes(s)).slice(0, 6)
 }
 
-function ResultView({ result }: { result: CommandResult }) {
+function ResultView({ result, onCopy }: { result: CommandResult; onCopy?: () => void }) {
+  const [hov, setHov] = useState(-1)
   if (result.type === 'text') {
-    return <div className="result-text">{result.text}</div>
+    return (
+      <div className="result-text">
+        {onCopy && <CopyBtn text={result.text} onClickCopy={onCopy} />}
+        <pre className="result-pre">{result.text}</pre>
+      </div>
+    )
   }
   if (result.type === 'list') {
     return (
@@ -63,18 +69,67 @@ function ResultView({ result }: { result: CommandResult }) {
         {result.items.map((it, i) => (
           <li
             key={i}
+            className={`result-item${it.path && i === hov ? ' hover' : ''}`}
+            onMouseEnter={() => setHov(i)}
             onClick={() => {
-              if (it.copy) void window.api.system.pbcopy(it.copy)
+              if (it.copy) {
+                void window.api.system.pbcopy(it.copy)
+                onCopy?.()
+              }
             }}
           >
             <div className="li-title">{it.title}</div>
             {it.subtitle && <div className="li-sub">{it.subtitle}</div>}
+            {it.path && i === hov && (
+              <span className="li-actions">
+                <span
+                  className="li-act"
+                  role="button"
+                  title="在 Finder 中显示"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void window.api.system.reveal(it.path!)
+                  }}
+                >
+                  ⌕
+                </span>
+                <span
+                  className="li-act"
+                  role="button"
+                  title="打开"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void window.api.system.open(it.path!)
+                  }}
+                >
+                  ↗
+                </span>
+              </span>
+            )}
           </li>
         ))}
       </ul>
     )
   }
   return <div className="result-text">（无结果）</div>
+}
+
+/** 复制反馈：localState "已复制 ✓" 1.2s。 */
+function CopyBtn({ text, onClickCopy }: { text: string; onClickCopy: () => void }) {
+  const [done, setDone] = useState(false)
+  return (
+    <button
+      className="copy"
+      onClick={() => {
+        void window.api.system.pbcopy(text)
+        onClickCopy()
+        setDone(true)
+        setTimeout(() => setDone(false), 1200)
+      }}
+    >
+      {done ? '已复制 ✓' : '复制'}
+    </button>
+  )
 }
 
 export default function App() {
@@ -88,13 +143,25 @@ export default function App() {
   const [busy, setBusy] = useState(false) // 命令执行中：等待响应
   const [fatal, setFatal] = useState<string | null>(null)
   const [cursor, setCursor] = useState(0)
+  const [toast, setToast] = useState<string | null>(null) // 复制反馈
+  const [recents, setRecents] = useState<SessionSummary[]>([]) // 最近会话
+  const [gwDown, setGwDown] = useState(false) // 网关未连接 → 引导条（本次运行可关）
+  const [bannerHidden, setBannerHidden] = useState(false)
+  const [delArm, setDelArm] = useState<{ id: string } | null>(null) // ⭐ 模板待确认删除
   const inputRef = useRef<HTMLInputElement>(null)
 
   const all: Template[] = [...TEMPLATES, ...saved]
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  const showCopy = () => {
+    setToast('已复制 ✓')
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 1200)
+  }
 
   useEffect(() => inputRef.current?.focus(), [])
 
-  // 加载 /save 沉淀模板（唤起时也刷新）
+  // 加载 /save 沉淀模板 + 最近会话 + 网关状态（每次唤起也刷新）
   useEffect(() => {
     if (!window.api) return
     const load = () => {
@@ -102,6 +169,14 @@ export default function App() {
         .list()
         .then((ms) => setSaved(ms.map(toTpl)))
         .catch(() => {})
+      window.api.session
+        .recent()
+        .then((rs) => setRecents(rs))
+        .catch(() => {})
+      window.api.gateway
+        .status()
+        .then((s) => setGwDown(s === 'stopped'))
+        .catch(() => setGwDown(true))
     }
     void load()
     const off = window.api.onLauncherShow(() => void load())
@@ -317,6 +392,17 @@ export default function App() {
           <ModeChip />
         </div>
       )}
+      {gwDown && !bannerHidden && !input.trim() && (
+        <div className="gw-banner">
+          <span>模型网关未连接，命令/对话暂不可用</span>
+          <button className="btn" onClick={() => void window.api.window.openSettings()}>
+            打开设置
+          </button>
+          <span className="gw-close" role="button" title="关闭" onClick={() => setBannerHidden(true)}>
+            ✕
+          </span>
+        </div>
+      )}
       <div className="body">
         {fatal && <div className="result-text fatal">{fatal}</div>}
         {!fatal && confirmReq ? (
@@ -334,44 +420,82 @@ export default function App() {
         ) : !fatal && busy ? (
           <div className="result-text dim">处理中…</div>
         ) : !fatal && !result ? (
-          <ul className="matches">
-            {items.map((it, i) => (
-              <li
-                key={it.kind === 'cmd' ? it.c.id : it.t.id}
-                className={i === cursor ? 'sel' : ''}
-                onMouseMove={() => {
-                  if (cursor !== i) setCursor(i)
-                }}
-                onClick={() => void onEnter(i)}
-              >
-                {it.kind === 'cmd' ? (
-                  <>
-                    <span className="m-id">{it.c.id}</span>
-                    <span className="m-title">{it.c.title}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="m-id">{it.t.emoji}</span>
-                    <span className="m-title">{it.t.title}</span>
-                    <span className="t-sub">{isTplParam ? it.t.hint : it.t.hint}</span>
-                  </>
-                )}
-              </li>
-            ))}
-            {!items.length && (
-              <li className="hint">
-                {showHint
-                  ? '回车：交给 agent 对话'
-                  : isTplParam
-                    ? '未知模板，直接输入内容回车会交给 agent'
-                    : '回车：交给 agent 对话'}
-              </li>
+          <>
+            {!input.trim() && recents.length > 0 && (
+              <div className="recent-row">
+                <span className="recent-label">最近会话</span>
+                {recents.map((r) => (
+                  <button
+                    key={r.id}
+                    className="recent-chip"
+                    title={r.title}
+                    onClick={() => {
+                      setInput('')
+                      void window.api.session.attach(r.id)
+                    }}
+                  >
+                    {r.title}
+                  </button>
+                ))}
+              </div>
             )}
-          </ul>
+            <ul className="matches">
+              {items.map((it, i) => (
+                <li
+                  key={it.kind === 'cmd' ? it.c.id : it.t.id}
+                  className={`${i === cursor ? 'sel' : ''}${it.kind === 'tpl' && it.t.emoji === '⭐' ? ' del' : ''}`}
+                  onMouseMove={() => {
+                    if (cursor !== i) setCursor(i)
+                    setDelArm(null)
+                  }}
+                  onClick={() => void onEnter(i)}
+                >
+                  {it.kind === 'cmd' ? (
+                    <>
+                      <span className="m-id">{it.c.id}</span>
+                      <span className="m-title">{it.c.title}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="m-id">{it.t.emoji}</span>
+                      <span className="m-title">{it.t.title}</span>
+                      <span className="t-sub">{it.t.hint}</span>
+                      {it.t.emoji === '⭐' && (i === cursor || delArm?.id === it.t.id) && (
+                        <span
+                          className="tpl-del"
+                          role="button"
+                          title="删除模板"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (delArm?.id === it.t.id) {
+                              setDelArm(null)
+                              void window.api.saves.remove(it.t.id).then(() => {
+                                window.api.saves.list().then((ms) => setSaved(ms.map(toTpl)))
+                              })
+                            } else {
+                              setDelArm({ id: it.t.id })
+                            }
+                          }}
+                        >
+                          {delArm?.id === it.t.id ? '确认删除？' : '✕'}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </li>
+              ))}
+              {!items.length && (
+                <li className="hint">
+                  {showHint ? '回车：交给 agent 对话' : isTplParam ? '未知模板，直接输入内容回车会交给 agent' : '回车：交给 agent 对话'}
+                </li>
+              )}
+            </ul>
+          </>
         ) : result ? (
-          <ResultView result={result} />
+          <ResultView result={result} onCopy={showCopy} />
         ) : null}
       </div>
+      {toast && <div className="toast">{toast}</div>}
     </div>
   )
 }

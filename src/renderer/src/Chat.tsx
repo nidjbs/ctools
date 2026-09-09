@@ -7,6 +7,7 @@ import { Md, CopyButton } from './Md'
 import ModeChip from './ModeChip'
 import PlanCard, { type PlanAction } from './PlanCard'
 import { planTextSeqs, taskPlan } from '../../shared/planModel'
+import { toolRowOf, runStatusLabel, type ToolRow } from '../../shared/chatModel'
 import { quickEnter } from '../../shared/quickRun'
 
 type Bubble = { role: 'user' | 'assistant' | 'tool'; content: string }
@@ -22,7 +23,66 @@ function toBubble(ev: SessionEvent): Bubble | null {
   return null
 }
 
-const REBUILD = new Set(['user.message', 'assistant.message', 'tool.call', 'agent.error', 'plan.propose', 'plan.approved', 'plan.rejected'])
+const REBUILD = new Set(['user.message', 'assistant.message', 'tool.call', 'tool.result', 'agent.error', 'plan.propose', 'plan.approved', 'plan.rejected'])
+
+/** 运行中真正在跑的工具：transcript 尾部是未配对的 tool.call（其后尚无 result）即视作执行中。 */
+function runningTool(evs: SessionEvent[]): string | null {
+  for (let i = evs.length - 1; i >= 0; i--) {
+    const e = evs[i]
+    if (e.type === 'tool.result') return null
+    if (e.type === 'tool.call') return e.tool_name || 'tool'
+    if (e.type === 'assistant.message' || e.type === 'user.message' || e.type === 'agent.error') return null
+  }
+  return null
+}
+
+/** 紧凑工具行：调用中（🔧 / 执行中 ⏳ + 参数预览）或结果（✓ + 摘要 + 复制全文）。 */
+function ToolRow({ row, full, live }: { row: ToolRow; full?: string; live?: boolean }) {
+  if (row.kind === 'call') {
+    return (
+      <div className={`tool-row call${live ? ' live' : ''}`} title={live ? `${row.tool} 执行中…` : `${row.tool} 已调用`}>
+        <span className="tr-tool">{live ? '⏳' : '🔧'} {row.tool}</span>
+        {row.params && <span className="tr-param">{row.params}</span>}
+      </div>
+    )
+  }
+  return (
+    <div className="tool-row result" title={`${row.tool} 结果`}>
+      <span className="tr-tool">✓ {row.tool}</span>
+      <span className="tr-summary">{row.summary}</span>
+      {full && <CopyButton text={full} label="复制全文" />}
+    </div>
+  )
+}
+
+/** 工具过程组块：相邻 tool 事件折叠成「▸ 工具×N」，默认收起；尾部未配对调用即执行中（live）。 */
+function ToolGroup({ events, running }: { events: SessionEvent[]; running: boolean }) {
+  const [open, setOpen] = useState(false)
+  const rows = events.map((ev) => toolRowOf(ev)).filter((r): r is ToolRow => r !== null)
+  const last = events[events.length - 1]
+  const active = running && !!last && last.type === 'tool.call'
+  const names = [...new Set(rows.map((r) => r.tool))]
+  const calls = rows.filter((r) => r.kind === 'call').length
+  const count = calls || rows.length
+  const label = names.join('、')
+  return (
+    <div className={`tool-group${active ? ' live' : ''}`}>
+      <button className="tg-toggle" onClick={() => setOpen((o) => !o)} title="展开/收起工具过程">
+        <span className="tg-arrow">{open ? '▾' : '▸'}</span>
+        <span className="tg-tool">🔧 工具 {label}</span>
+        <span className="tg-count">· {count} 次调用</span>
+        {active && <span className="spinner sm" />}
+      </button>
+      {open && (
+        <div className="tg-body">
+          {rows.map((r, i) => (
+            <ToolRow key={i} row={r} full={events[i]?.content} live={active && i === rows.length - 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 type Sug = { kind: 'cmd'; c: CommandMeta } | { kind: 'slash'; label: string; desc: string }
 
@@ -41,13 +101,15 @@ export default function Chat() {
   const [cands, setCands] = useState<Sug[]>([]) // 输入候选（commands.match 同源 Launcher）
   const [sel, setSel] = useState(-1) // 候选选中（默认 -1；有候选且已就绪时 effect 置 0）
   const [cmdOut, setCmdOut] = useState<string | null>(null) // 面板执行的 quick 结果
+  const [quickConfirm, setQuickConfirm] = useState<{ id: string; input: string; message: string } | null>(null)
   const [approval, setApproval] = useState<{ id: number; tool: string; message: string } | null>(null)
   const [planPending, setPlanPending] = useState(false) // plan.propose 后待批准（门控联想等）
   const [evs, setEvs] = useState<SessionEvent[]>([]) // 最近一次 transcript，供计划卡推导
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
   const tailRef = useRef<HTMLDivElement>(null)
   const verRef = useRef(0) // 防止慢快照覆盖新快照
   const task = taskPlan(evs)
+  const execTool = running ? runningTool(evs) : null // 运行中正在执行的工具名（loading 态）
 
   useEffect(() => inputRef.current?.focus(), [])
 
@@ -100,6 +162,17 @@ export default function Chat() {
     const offRunning = window.api.onSessionRunning(setRunning)
     // 工具人工在环批准（bash/破坏性写删）
     const offApprove = window.api.onToolConfirm((req) => setApproval(req))
+    // 会话被切换（attach/new）→ 清瞬态后重拉 transcript（session:reset）
+    const offReset = window.api.onSessionReset(() => {
+      setDraftText('')
+      setApproval(null)
+      setQuickConfirm(null)
+      setPlanPending(false)
+      setCmdOut(null)
+      setError(null)
+      setInput('')
+      void sync()
+    })
     // 晚挂载兜底：首轮已到工具确认/计划批准而我们刚订阅 → 主动拉取待批项
     void window.api.session.pendingConfirm().then((p) => {
       if (p) setApproval(p)
@@ -112,6 +185,7 @@ export default function Chat() {
       offEvent()
       offRunning()
       offApprove()
+      offReset()
     }
   }, [])
 
@@ -231,12 +305,33 @@ export default function Chat() {
     try {
       const r = await window.api.commands.run(c.id, t.param)
       if (r.type === 'confirm') {
-        setNotice(`${c.id} 需人工确认——请到 Launcher 执行：${r.message}`)
+        setCmdOut(null)
+        setQuickConfirm({ id: c.id, input: t.param, message: r.message }) // 就地确认（不再踢去 Launcher）
       } else if (r.type === 'list') {
         setCmdOut(r.items.map((it) => it.title).join('\n'))
       } else if (r.type === 'text') {
         setCmdOut(r.text)
       }
+    } catch (e) {
+      setNotice(`执行失败: ${(e as Error).message}`)
+    }
+  }
+
+  /** 就地批准 quick 确认（confirmApproved 重放）；拒绝则关闭。 */
+  async function decideQuickConfirm(ok: boolean) {
+    if (!quickConfirm) return
+    const { id, input: input0 } = quickConfirm
+    setQuickConfirm(null)
+    setCmdOut(null)
+    if (!ok) {
+      setNotice('已取消')
+      return
+    }
+    try {
+      const r = await window.api.commands.confirm(id, input0)
+      if (r.type === 'list') setCmdOut(r.items.map((it) => it.title).join('\n'))
+      else if (r.type === 'text') setCmdOut(r.text)
+      else setCmdOut('(已执行)')
     } catch (e) {
       setNotice(`执行失败: ${(e as Error).message}`)
     }
@@ -279,14 +374,29 @@ export default function Chat() {
     }
   }
 
-  // 对话流节点：普通气泡 + （存在计划任务时）在当前 user 气泡后内联插入计划卡
+  // 对话流节点：气泡 + 工具过程（相邻 tool 事件折叠为可展开组块）；计划激活时内联计划卡
+  const planSeq = task ? planTextSeqs(evs) : new Set<number>()
   const nodes: React.ReactNode[] = []
-  let lastUser = -1
-  for (let i = 0; i < bubbles.length; i++) if (bubbles[i].role === 'user') lastUser = i
-  for (let i = 0; i < bubbles.length; i++) {
-    const b = bubbles[i]
+  let lastUser = -1 // 计划卡插入点（nodes 内最后一个 user 气泡之后）
+  let toolBuf: SessionEvent[] = []
+  const flushTools = () => {
+    if (toolBuf.length) {
+      nodes.push(<ToolGroup key={toolBuf[0].event_id} events={toolBuf} running={running} />)
+      toolBuf = []
+    }
+  }
+  for (const ev of evs) {
+    if (planSeq.has(ev.seq)) continue
+    if (toolRowOf(ev)) {
+      toolBuf.push(ev) // 聚合相邻工具事件，遇非工具事件再 flush
+      continue
+    }
+    flushTools()
+    const b = toBubble(ev)
+    if (!b) continue
+    if (b.role === 'user') lastUser = nodes.length
     nodes.push(
-      <div key={i} className={`bubble ${b.role}`}>
+      <div key={ev.event_id} className={`bubble ${b.role}`}>
         <div className="bubble-head">
           <span className="bubble-role">{b.role === 'user' ? '你' : b.role === 'tool' ? '工具' : '助手'}</span>
           {b.content && <CopyButton text={b.content} />}
@@ -301,6 +411,7 @@ export default function Chat() {
       </div>,
     )
   }
+  flushTools()
   if (task) {
     nodes.splice(
       lastUser + 1,
@@ -313,15 +424,26 @@ export default function Chat() {
     <div className="chat">
       <div className="chat-modebar">
         <ModeChip />
+        <button
+          className="chat-new"
+          disabled={running}
+          title="另起一个干净会话"
+          onClick={() => void window.api.session.newSession()}
+        >
+          ＋ 新会话
+        </button>
       </div>
       <div className="chat-list">
         {nodes}
         {running && (
-          <div className="bubble assistant">
+          <div className="bubble assistant live">
             <div className="bubble-head">
-              <span className="bubble-role">助手</span>
+              <span className="run-status">
+                <span className="spinner" />
+                {runStatusLabel(execTool, !!draftText)}
+              </span>
             </div>
-            <div className="bubble-body">{draftText ? <Md text={draftText} /> : '…'}</div>
+            <div className="bubble-body">{draftText ? <Md text={draftText} /> : <span className="dots"><i /><i /><i /></span>}</div>
           </div>
         )}
         {error && <div className="chat-error">{error}</div>}
@@ -337,6 +459,21 @@ export default function Chat() {
               批准执行
             </button>
             <button className="btn" onClick={() => decideApproval(false)}>
+              拒绝
+            </button>
+          </div>
+        </div>
+      )}
+      {quickConfirm && !approval && (
+        <div className="approve-box">
+          <div className="approve-msg">
+            <strong>{quickConfirm.id}</strong> 需要人工确认：{quickConfirm.message}
+          </div>
+          <div className="confirm-actions">
+            <button className="btn approve" onClick={() => void decideQuickConfirm(true)}>
+              批准执行
+            </button>
+            <button className="btn" onClick={() => void decideQuickConfirm(false)}>
               拒绝
             </button>
           </div>
@@ -414,15 +551,18 @@ export default function Chat() {
         </ul>
       )}
       <div className="chat-input-row">
-        <input
+        <textarea
           ref={inputRef}
-          className="bar"
+          className="bar chat-box"
+          rows={1}
           value={input}
-          placeholder={running ? '回答中…' : draft ? '请先处理 /save 草稿' : '输入消息，回车发送'}
+          placeholder={running ? '回答中…' : draft ? '请先处理 /save 草稿' : '输入消息，回车发送 / Shift+回车换行'}
           disabled={running || !!draft}
           onChange={(e) => {
             setInput(e.target.value)
             setSel(-1)
+            e.currentTarget.style.height = 'auto'
+            e.currentTarget.style.height = Math.min(e.currentTarget.scrollHeight, 168) + 'px'
           }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown' && cands.length) {
@@ -431,9 +571,9 @@ export default function Chat() {
             } else if (e.key === 'ArrowUp' && cands.length) {
               e.preventDefault()
               setSel((s) => (s <= 0 ? cands.length - 1 : s - 1))
-            } else if (e.key === 'Enter') {
+            } else if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
               if (sel >= 0 && cands[sel]) {
-                e.preventDefault()
                 void runSug(cands[sel])
               } else {
                 void send()

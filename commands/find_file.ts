@@ -17,7 +17,7 @@ export const findFile: Command = {
     if (paths.length === 0) return { type: 'text', text: `未找到匹配 "${query}" 的文件` }
     return {
       type: 'list',
-      items: paths.slice(0, 10).map((p) => ({ title: p, subtitle: '回车复制路径', copy: p })),
+      items: paths.slice(0, 10).map((p) => ({ title: p, subtitle: '回车复制路径', copy: p, path: p })),
     }
   },
 }

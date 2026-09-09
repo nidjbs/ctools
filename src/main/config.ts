@@ -15,6 +15,7 @@ export function defaultConfig(): AppConfig {
     hotkey: 'CommandOrControl+Shift+Space',
     managedGateway: false,
     webSearchEnabled: false,
+    bashNetwork: false,
     enabledCommands: {},
   }
 }

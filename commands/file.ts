@@ -3,7 +3,8 @@
 import { readFileSync, readdirSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Command, Ctx } from '../src/shared/types'
-import { checkInside, needConfirm } from '../src/shared/filePolicy'
+import { needConfirm } from '../src/shared/filePolicy'
+import { realInside } from '../src/main/pathGuard'
 
 const MAX_READ = 256 * 1024
 
@@ -46,7 +47,7 @@ export const fileRead: Command = {
   run: async (input, ctx) => {
     const target = pathOf(input)
     if (!target) return { type: 'text', text: '用法: file_read <绝对路径 或 file_roots 下相对路径>' }
-    const p = checkInside(ctx.config.fileRoots, target)
+    const p = await realInside(ctx.config.fileRoots, target)
     if (!p) return denied(ctx.config.fileRoots)
     try {
       const text = readFileSync(p, 'utf-8')
@@ -70,7 +71,7 @@ export const fileList: Command = {
   schema: PATH_SCHEMA,
   run: async (input, ctx) => {
     const target = pathOf(input) || '.'
-    const p = checkInside(ctx.config.fileRoots, target)
+    const p = await realInside(ctx.config.fileRoots, target)
     if (!p) return denied(ctx.config.fileRoots)
     try {
       const items = readdirSync(p, { withFileTypes: true })
@@ -80,6 +81,7 @@ export const fileList: Command = {
         items: items.slice(0, 50).map((d) => ({
           title: `${d.isDirectory() ? '📁' : '📄'} ${d.name}`,
           copy: join(p, d.name),
+          path: join(p, d.name),
         })),
       }
     } catch (e) {
@@ -115,7 +117,7 @@ export const fileWrite: Command = {
       content = String(o.content ?? '')
     }
     if (!target) return { type: 'text', text: '用法: file_write <路径> <内容>' }
-    const p = checkInside(ctx.config.fileRoots, target)
+    const p = await realInside(ctx.config.fileRoots, target)
     if (!p) return denied(ctx.config.fileRoots)
     const exists = existsSync(p)
     const gated = gateConfirm(ctx, exists ? 'overwrite' : 'create', p, exists)
@@ -141,7 +143,7 @@ export const fileRm: Command = {
   run: async (input, ctx) => {
     const target = pathOf(input)
     if (!target) return { type: 'text', text: '用法: file_rm <路径>' }
-    const p = checkInside(ctx.config.fileRoots, target)
+    const p = await realInside(ctx.config.fileRoots, target)
     if (!p) return denied(ctx.config.fileRoots)
     if (!existsSync(p)) return { type: 'text', text: `文件不存在: ${p}` }
     const gated = gateConfirm(ctx, 'delete', p, true)

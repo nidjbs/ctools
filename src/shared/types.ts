@@ -7,9 +7,19 @@ export type AgentMode = 'normal' | 'plan'
 
 export type CommandResult =
   | { type: 'text'; text: string }
-  | { type: 'list'; items: { title: string; subtitle?: string; copy?: string }[] }
+  | {
+      type: 'list'
+      items: { title: string; subtitle?: string; copy?: string; path?: string }[]
+    }
   | { type: 'chat'; sessionId: string }
   | { type: 'confirm'; message: string }
+
+/** 历史会话摘要（Launcher 首页「最近会话」用）。 */
+export interface SessionSummary {
+  id: string
+  title: string
+  updatedAt: string
+}
 
 /** 一个能力 = 一个 Command。悬浮联想 / agent 工具 / 设置页启停都读注册表。 */
 export interface CommandMeta {
@@ -99,6 +109,8 @@ export interface AppConfig {
   managedGateway?: boolean
   /** 联网搜索开关（默认关；开启后 web_search 对 agent/Launcher 可用，调用仍需批准）。 */
   webSearchEnabled?: boolean
+  /** bash 联网开关（默认关：bash 经 sandbox-exec 强制禁网；开=放行联网，执行仍每次人工确认）。 */
+  bashNetwork?: boolean
   enabledCommands: Record<string, boolean>
 }
 
@@ -171,10 +183,20 @@ export interface CtoolsApi {
   }
   system: {
     pbcopy(text: string): Promise<boolean>
+    /** Finder 定位文件（IPC 层 file_roots 校验后 open -R）。越界/失败返回 false。 */
+    reveal(path: string): Promise<boolean>
+    /** 默认应用打开文件（IPC 层 file_roots 校验后 open）。越界/失败返回 false。 */
+    open(path: string): Promise<boolean>
   }
   session: {
     /** 打开 Chat 会话（可携带首条消息直接开跑）。 */
     open(firstMessage?: string): Promise<{ id: string }>
+    /** 最近会话摘要（按 updatedAt 降序，最多 10 条）。 */
+    recent(): Promise<SessionSummary[]>
+    /** 载入历史会话续聊（打开/聚焦 Chat，不自动发消息）。 */
+    attach(id: string): Promise<{ id: string }>
+    /** 另起全新会话（Chat「＋新会话」）。 */
+    newSession(): Promise<{ id: string }>
     send(text: string): Promise<void>
     cancel(): Promise<void>
     transcript(): Promise<SessionEvent[]>
@@ -200,6 +222,8 @@ export interface CtoolsApi {
     list(): Promise<SavedMeta[]>
     draft(hint?: string, feedback?: string): Promise<DraftMeta>
     save(draft: DraftMeta): Promise<SavedMeta>
+    /** 删除沉淀模板（按 id/slug；不存在幂等）。 */
+    remove(id: string): Promise<void>
   }
   /** 工具需人工批准（bash/破坏性写删）。 */
   onToolConfirm(cb: (req: { id: number; tool: string; message: string }) => void): () => void
@@ -213,4 +237,6 @@ export interface CtoolsApi {
   onSessionMode(cb: (m: AgentMode) => void): () => void
   /** Launcher 每次唤起时通知（清空输入、重新聚焦）。 */
   onLauncherShow(cb: () => void): () => void
+  /** 活动会话被切换（attach/new）→ Chat 需清态并重拉 transcript。 */
+  onSessionReset(cb: () => void): () => void
 }

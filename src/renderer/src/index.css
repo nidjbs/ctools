@@ -734,3 +734,314 @@ body {
   border-top: 1px solid #4a3f24;
   padding-top: 8px;
 }
+
+/* ---- Launcher：网关未连接引导条 / 最近会话 chips / 复制 toast / 结果增强 ---- */
+.gw-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #3a2a1a;
+  color: #e8c566;
+  font-size: 13px;
+}
+.gw-banner .btn {
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: #b98a1e;
+  color: #111;
+  cursor: pointer;
+  font-size: 12px;
+}
+.gw-close {
+  margin-left: auto;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.gw-close:hover {
+  opacity: 1;
+}
+
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px 2px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.recent-row::-webkit-scrollbar {
+  display: none;
+}
+.recent-label {
+  color: #888;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.recent-chip {
+  border: 1px solid #3a3a50;
+  border-radius: 20px;
+  background: #262633;
+  color: #ccc;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-chip:hover {
+  background: #34344a;
+  color: #eee;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  background: #2f4fcf;
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 10;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.result-text .result-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+}
+.result-text .copy {
+  float: right;
+  margin-bottom: 4px;
+}
+
+.result-item {
+  position: relative;
+}
+.li-actions {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  gap: 4px;
+}
+.li-act {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: #34344a;
+  color: #cbd;
+  font-size: 13px;
+  cursor: pointer;
+}
+.li-act:hover {
+  background: #41415a;
+}
+.result-item.hover {
+  background: #34344a;
+}
+
+.matches li.del .tpl-del {
+  margin-left: auto;
+  cursor: pointer;
+  color: #ff9aa2;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #3a2228;
+}
+.matches li.del .tpl-del:hover {
+  background: #522;
+}
+
+/* ---- Chat：＋新会话 / 工具行 / 多行输入 ---- */
+.chat-modebar {
+  gap: 8px;
+  align-items: center;
+}
+.chat-new {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: #34344a;
+  color: #eee;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chat-new:hover:not(:disabled) {
+  background: #41415a;
+}
+.chat-new:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tool-row {
+  align-self: flex-start;
+  max-width: 92%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #9db4ff;
+  background: #232336;
+  flex-shrink: 0;
+}
+.tool-row.call {
+  color: #c9a94f;
+}
+.tool-row.result {
+  color: #9db4ff;
+}
+.tr-tool {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tr-param,
+.tr-summary {
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 420px;
+}
+.tool-row .copy {
+  opacity: 0.7;
+}
+
+.tool-group {
+  align-self: flex-start;
+  max-width: 92%;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: #232336;
+}
+.tg-toggle {
+  border: none;
+  background: transparent;
+  color: #9db4ff;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+}
+.tg-toggle:hover {
+  background: #2d2d42;
+  border-radius: 8px;
+}
+.tg-arrow {
+  color: #888;
+  width: 10px;
+  flex-shrink: 0;
+}
+.tg-tool {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tg-count {
+  color: #777;
+  font-size: 11px;
+}
+.tg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px 8px;
+  border-top: 1px solid #31314a;
+}
+.tg-body .tool-row {
+  max-width: 100%;
+  background: transparent;
+  padding: 2px 4px;
+}
+
+.chat-input-row .chat-box {
+  resize: none;
+  line-height: 1.5;
+  overflow-y: auto;
+  max-height: 168px;
+  flex: 1;
+}
+
+/* ---- 运行中 loading 态：思考/工具执行 spinner + 状态文案 + 省略号动画 ---- */
+.spinner {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  display: inline-block;
+  border: 2px solid #44445e;
+  border-top-color: #8fa1ff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.spinner.sm {
+  width: 8px;
+  height: 8px;
+  border-width: 1.5px;
+  margin-left: 2px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.run-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #9db4ff;
+}
+.dots i {
+  width: 4px;
+  height: 4px;
+  margin: 0 1px;
+  border-radius: 50%;
+  background: #9db4ff;
+  display: inline-block;
+  animation: blink 1s infinite;
+}
+.dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+.bubble.live {
+  border: 1px solid #35354e;
+}
+.tool-row.call.live {
+  color: #e6cc74;
+}
+.tool-group.live .tg-toggle {
+  color: #e6cc74;
+}

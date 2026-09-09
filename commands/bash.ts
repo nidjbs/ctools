@@ -1,39 +1,15 @@
-// bash：Launcher 执行 shell 命令，每次强制确认（specs/bash.md）。非 agentTool。
-import { exec } from 'node:child_process'
+// bash：Launcher 执行 shell 命令，每次强制确认（specs/bash.md）。agentTool。
+// 默认经 sandbox-exec 禁网执行（AppConfig.bashNetwork=true 放行联网）。见 src/main/shellSandbox.ts。
 import { homedir } from 'node:os'
 import type { Command, Ctx } from '../src/shared/types'
 import { queryText } from '../src/shared/tool'
-
-const TIMEOUT_MS = 30_000
-const MAX_OUT = 8000
-
-function cap(s: string): string {
-  return s.length > MAX_OUT ? `${s.slice(0, MAX_OUT)}\n…[输出截断，共 ${s.length} 字符]` : s
-}
+import { runShellSandboxed } from '../src/main/shellSandbox'
 
 /** 确认闸门：bash 恒需 confirmApproved（无视 writeConfirm，never 也不放行）。 */
 function gate(ctx: Ctx, cmd: string) {
   if (ctx.confirmApproved) return null
   const preview = cmd.replace(/\s+/g, ' ').slice(0, 80)
   return { type: 'confirm' as const, message: `确认在 shell 执行：${preview}` }
-}
-
-function runShell(cmd: string, cwd: string): Promise<{ code: number; text: string }> {
-  return new Promise((resolve) => {
-    exec(cmd, { cwd, timeout: TIMEOUT_MS, maxBuffer: MAX_OUT * 2 }, (err, stdout, stderr) => {
-      const out = cap(`${stdout}${stderr}`.trim())
-      if (!err) {
-        resolve({ code: 0, text: out ? `退出码 0\n${out}` : '退出码 0（无输出）' })
-        return
-      }
-      const code = typeof (err as NodeJS.ErrnoException & { code?: unknown }).code === 'number' ? Number((err as { code: unknown }).code) : 1
-      if ((err as { killed?: boolean }).killed) {
-        resolve({ code, text: `已超时(${TIMEOUT_MS / 1000}s)终止\n${out}` })
-        return
-      }
-      resolve({ code, text: `退出码 ${code}\n${out}` })
-    })
-  })
 }
 
 export const bashCmd: Command = {
@@ -49,7 +25,7 @@ export const bashCmd: Command = {
     const gated = gate(ctx, cmd)
     if (gated) return gated
     const cwd = ctx.config.fileRoots.find(Boolean) || homedir()
-    const { text } = await runShell(cmd, cwd)
+    const { text } = await runShellSandboxed(cmd, cwd, !!ctx.config.bashNetwork)
     return { type: 'text', text }
   },
 }

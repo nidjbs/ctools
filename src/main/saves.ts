@@ -59,6 +59,14 @@ export function saveCommand(dir: string, d: DraftMeta): SavedCommand {
   return cmd
 }
 
+/** 删除沉淀模板（按 id 精确；不存在幂等）。 */
+export function removeSave(dir: string, id: string): void {
+  const all = listSaves(dir)
+  const next = all.filter((c) => c.id !== id)
+  if (next.length === all.length) return
+  writeFileSync(file(dir), JSON.stringify(next, null, 2), 'utf-8')
+}
+
 /** 会话摘要（供蒸馏）：取最近若干条 用户/助手 内容，各截断。 */
 export function transcriptDigest(events: SessionEvent[], max = 8): string {
   const lines: string[] = []
