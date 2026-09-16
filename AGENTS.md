@@ -43,6 +43,7 @@
 ```sh
 npm run dev                 # 本地跑 Electron
 npm run test                # 单测 + 运行时 e2e（vitest，tests/*.test.ts）
+npm run test:golden         # 黄金集：断言「模型实际收到了什么」（录制型 mock gateway，tests/golden.test.ts）
 npm run test:ui             # UI e2e（构建 out/ 后 Playwright 驱动真实 Electron ↔ mock gateway，tests/ui）
 npm run test:all            # 回归：test + test:ui 全量
 npm run typecheck           # tsc 双配置  
@@ -53,6 +54,8 @@ npm run build               # 打包
 **大改动后必须回归**：跑 `npm run typecheck && npm run test:all`，全绿才算完成。改动只涉及单个命令/纯逻辑时至少跑 `npm run test`；改动 UI/主进程 IPC/交互流程时跑 `npm run test:all`。
 
 **UI e2e 分层**：`tests/ui` 覆盖可控交互（联想/quick 执行/Chat 流式/优雅失败），走真实 Electron（`out/` 构建产物）↔ mock gateway。依赖真实系统副作用的（Spotlight 全量搜、剪贴板写入）留在运行时 e2e/单测兜底，不进 UI e2e。
+
+**黄金集（`tests/golden.test.ts`）**：改动 **agent runtime / 上下文 / 记忆 / 工具分发** 时必跑。用录制型 mock gateway（`tests/helpers/gateway.ts`，真实 HTTP + 记录每次请求）断言**模型实际收到了什么** —— 环境注入内容、前缀缓存不变量（turn 内 system 字节一致）、记忆闭环、大结果外置、摘要与合并。单测验证模块语义，黄金集验证这些语义真的透到了请求里。
 
 **新增一个命令**：注册 `{ id, title, aliases, kind, schema, agentTool, run }` —— 悬浮联想、agent 工具、设置页即自动可用。
 

@@ -9,6 +9,7 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "vitest run",
+    "test:golden": "vitest run tests/golden.test.ts",
     "test:ui": "electron-vite build && playwright test",
     "test:all": "npm run test && npm run test:ui",
     "command:new": "node scripts/new-command.mjs"
