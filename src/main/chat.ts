@@ -37,6 +37,8 @@ export interface ChatIO {
   onRunning?(running: boolean): void
   /** 工具需人工批准（bash/破坏性写删）。resolve(true)=批准执行。 */
   onConfirm?(tool: string, message: string): Promise<boolean>
+  /** agent 提问（ask 工具）：返回用户回答；空/超时 → 由调用方给「（用户未回答）」。 */
+  onAsk?(question: string, options?: string[]): Promise<string>
 }
 
 export class ChatManager {
@@ -88,6 +90,7 @@ export class ChatManager {
       onContent: (d) => io.onDelta(d),
       onEvent: (e) => io.onEvent(e),
       ...(io.onConfirm ? { onConfirm: io.onConfirm } : {}),
+      ...(io.onAsk ? { onAsk: io.onAsk } : {}),
     }
   }
 

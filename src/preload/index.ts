@@ -52,6 +52,8 @@ const api: CtoolsApi = {
     running: handle('session:running'),
     confirm: handle('tool:confirm'),
     pendingConfirm: handle('session:pendingConfirm'),
+    pendingAsk: handle('session:pendingAsk'),
+    answerAsk: handle('tool:answer'),
     mode: handle('session:mode'),
     setMode: handle('session:setMode'),
     executePlan: handle('session:executePlan'),
@@ -89,6 +91,11 @@ const api: CtoolsApi = {
     const listener = (_e: unknown, req: { id: number; tool: string; message: string }) => cb(req)
     ipcRenderer.on('tool:confirm', listener)
     return () => ipcRenderer.removeListener('tool:confirm', listener)
+  },
+  onToolAsk: (cb) => {
+    const listener = (_e: unknown, req: { id: number; question: string; options?: string[] }) => cb(req)
+    ipcRenderer.on('tool:ask', listener)
+    return () => ipcRenderer.removeListener('tool:ask', listener)
   },
   onLauncherShow: (cb) => {
     const listener = () => cb()

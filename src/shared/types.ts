@@ -13,6 +13,8 @@ export type CommandResult =
     }
   | { type: 'chat'; sessionId: string }
   | { type: 'confirm'; message: string }
+  /** agent 向用户提问；答案作为该工具的 tool.result 回填。见 specs/ask.md。 */
+  | { type: 'ask'; question: string; options?: string[] }
 
 /** 历史会话摘要（Launcher 首页「最近会话」用）。 */
 export interface SessionSummary {
@@ -34,6 +36,8 @@ export interface CommandMeta {
 export interface Command extends CommandMeta {
   /** 只读、无副作用：可进入 plan 模式规划工具集。默认 false。 */
   planSafe?: boolean
+  /** 给模型看的「何时用 / 何时不用」一句话；缺省回退到 title。见 specs/agent-loop.md §3。 */
+  description?: string
   /** 声明式参数 schema（悬浮框与 agent 共用校验）。 */
   schema?: unknown
   /** 执行；ctx 携带 config / gateway / system 集成。 */
@@ -248,6 +252,10 @@ export interface CtoolsApi {
     confirm(id: number, ok: boolean): Promise<void>
     /** 待批确认（晚挂载的渲染层主动拉取，防事件丢失）。 */
     pendingConfirm(): Promise<{ id: number; tool: string; message: string } | null>
+    /** 待答问题（晚挂载拉取，防事件丢失）。 */
+    pendingAsk(): Promise<{ id: number; question: string; options?: string[] } | null>
+    /** 回答 agent 的提问（id 来自 onToolAsk）。 */
+    answerAsk(id: number, text: string): Promise<void>
     /** 当前对话模式（Chat 顶栏 / Launcher 将进 agent 时 直接/规划 chip 同源）。 */
     mode(): Promise<AgentMode>
     setMode(m: AgentMode): Promise<AgentMode>
@@ -276,6 +284,8 @@ export interface CtoolsApi {
   }
   /** 工具需人工批准（bash/破坏性写删）。 */
   onToolConfirm(cb: (req: { id: number; tool: string; message: string }) => void): () => void
+  /** agent 提问（ask 工具）待用户回答。 */
+  onToolAsk(cb: (req: { id: number; question: string; options?: string[] }) => void): () => void
   /** 订阅会话事件推送；返回取消订阅函数。 */
   onSessionEvent(cb: (ev: SessionEvent) => void): () => void
   /** 订阅流式文本增量。 */

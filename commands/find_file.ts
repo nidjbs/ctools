@@ -5,6 +5,7 @@ import { queryText } from '../src/shared/tool'
 export const findFile: Command = {
   id: 'find_file',
   title: '查找文件',
+  description: '按文件名/内容做系统索引搜索，返回文件路径。找文件用它；找文件里的具体内容用 grep。',
   aliases: ['find', '文件', '搜索', 'locate'],
   kind: 'quick',
   enabled: true,

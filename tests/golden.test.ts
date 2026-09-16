@@ -10,8 +10,10 @@ import { GatewayClient } from '../src/main/gatewayClient'
 import { ChatManager, type ChatIO } from '../src/main/chat'
 import { Registry } from '../src/main/registry'
 import { MemoryStore } from '../src/main/memory'
-import { fileRead, fileList, fileWrite, fileRm } from '../commands/file'
+import { fileRead, fileList, fileWrite, fileRm, fileEdit } from '../commands/file'
 import { findFile } from '../commands/find_file'
+import { grepCmd } from '../commands/grep'
+import { askCmd } from '../commands/ask'
 import { rememberCmd, forgetCmd, recallCmd, memoryListCmd } from '../commands/memory'
 import type { AppConfig, Ctx, SessionEvent } from '../src/shared/types'
 import { startRecordingGateway, type GatewayRequest, type RecordingGateway, type Reply } from './helpers/gateway'
@@ -42,16 +44,36 @@ function toolThenFinal(tool: string, args: unknown, final = '完成'): (req: Gat
   }
 }
 
-const io = (sink?: SessionEvent[]): ChatIO => ({
+const io = (sink?: SessionEvent[], extra: Partial<ChatIO> = {}): ChatIO => ({
   onEvent: (e) => sink?.push(e),
   onDelta: () => {},
+  ...extra,
 })
 
 const envOf = (t: GatewayRequest): string =>
   t.messages.find((m) => m.content?.includes('工作目录'))?.content ?? ''
 
-function newChat(): ChatManager {
-  return new ChatManager(ctx, registry, join(userData, 'sessions'))
+/** 默认用「最小注册表」以保持环境段 golden 稳定；P1 用例显式传完整表。 */
+function newChat(reg: Registry = registry): ChatManager {
+  return new ChatManager(ctx, reg, join(userData, 'sessions'))
+}
+
+/** 完整注册表（含 P1 新增工具）—— 会让环境段多出对应「工具要点」，故只在 P1 用例里用。 */
+function fullRegistry(): Registry {
+  return new Registry().registerAll([
+    fileRead,
+    fileList,
+    fileWrite,
+    fileRm,
+    fileEdit,
+    grepCmd,
+    askCmd,
+    findFile,
+    rememberCmd,
+    forgetCmd,
+    recallCmd,
+    memoryListCmd,
+  ])
 }
 
 beforeAll(() => {
@@ -370,6 +392,85 @@ describe('G6 安全闸门回归：白名单兜底 + 破坏性操作人工在环'
     })
     expect(asked).toContain('file_write')
     expect(readFileSync(target, 'utf-8')).toBe('v1')
+  })
+})
+
+describe('G9 P1 工具能力：ask / file_edit / grep / 并发顺序 / 工具描述', () => {
+  it('ask：问题到达用户，回答回填为 tool.result', async () => {
+    responder = toolThenFinal('ask', { question: '选哪个方案？', options: ['A', 'B'] }, '好的')
+    const asked: Array<{ q: string; opts?: string[] }> = []
+    const evs: SessionEvent[] = []
+    const chat = newChat(fullRegistry())
+    await chat.open('帮我选一个', io(evs, { onAsk: async (q, opts) => { asked.push({ q, opts }); return 'B' } }))
+
+    expect(asked[0].q).toBe('选哪个方案？')
+    expect(asked[0].opts).toEqual(['A', 'B'])
+    expect(evs.find((e) => e.type === 'tool.result')?.content).toBe('用户回答：B')
+  })
+
+  it('grep：结果以 路径:行号 进入 tool.result', async () => {
+    writeFileSync(join(root, 'notes.txt'), 'first line\nneedle here\nthird\n')
+    responder = toolThenFinal('grep', { pattern: 'needle' }, '找到了')
+    const evs: SessionEvent[] = []
+    const chat = newChat(fullRegistry())
+    await chat.open('搜 needle', io(evs))
+
+    const result = evs.find((e) => e.type === 'tool.result')?.content ?? ''
+    expect(result).toContain('notes.txt:2')
+    expect(result).toContain('needle here')
+  })
+
+  it('file_edit：经网关走通，唯一匹配替换落盘', async () => {
+    const target = join(root, 'edit-me.txt')
+    writeFileSync(target, 'alpha\nbeta\n')
+    ctx.config.writeConfirm = 'never'
+    responder = toolThenFinal('file_edit', { path: target, old_string: 'beta', new_string: 'BETA' }, '改好了')
+    const chat = newChat(fullRegistry())
+    await chat.open('把 beta 改成大写', io())
+
+    expect(readFileSync(target, 'utf-8')).toBe('alpha\nBETA\n')
+    expect(gw.turns()[1].messages.find((m) => m.role === 'tool')?.content).toContain('已修改')
+  })
+
+  it('只读批：事件顺序为 全部 call → 全部 result（与模型给出顺序一致）', async () => {
+    responder = (req) => {
+      let lastUser = -1
+      req.messages.forEach((m, i) => {
+        if (m.role === 'user') lastUser = i
+      })
+      const thisTurn = req.messages.slice(lastUser + 1)
+      return thisTurn.some((m) => m.role === 'tool')
+        ? { stream: true, content: '都看完了' }
+        : { stream: true, toolCalls: [{ name: 'file_list', args: { path: root } }, { name: 'find_file', args: { query: 'x' } }] }
+    }
+    const evs: SessionEvent[] = []
+    const chat = newChat(fullRegistry())
+    await chat.open('列目录并找文件', io(evs))
+    const seq = evs
+      .filter((e) => e.type === 'tool.call' || e.type === 'tool.result')
+      .map((e) => `${e.type}:${e.tool_name}`)
+    expect(seq).toEqual(['tool.call:file_list', 'tool.call:find_file', 'tool.result:file_list', 'tool.result:find_file'])
+  })
+
+  it('工具描述进入 tools 定义（不再是 title）', async () => {
+    responder = () => ({ stream: true, content: '好的' })
+    const chat = newChat(fullRegistry())
+    await chat.open('你好', io())
+    const byName = new Map(gw.turns()[0].tools.map((t) => [t.function.name, t.function.description]))
+    expect(byName.get('file_edit')).toContain('不要整份重写')
+    expect(byName.get('grep')).toContain('find_file')
+    expect(byName.get('file_read')).toContain('offset/limit')
+    expect(byName.get('ask')).toContain('options')
+  })
+
+  it('环境段为已启用的 P1 工具列出要点', async () => {
+    responder = () => ({ stream: true, content: '好的' })
+    const chat = newChat(fullRegistry())
+    await chat.open('你好', io())
+    const env = envOf(gw.turns()[0])
+    expect(env).toContain('file_edit')
+    expect(env).toContain('grep')
+    expect(env).toContain('ask')
   })
 })
 

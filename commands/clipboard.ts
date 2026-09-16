@@ -31,6 +31,7 @@ export async function recallByModel(
 export const clipboardCmd: Command = {
   id: 'clipboard',
   title: '剪贴板',
+  description: '在用户剪贴板历史里语义检索（隐私：仅走本地模型）。取当前/历史剪贴板内容用它。',
   aliases: ['clip', '剪贴板', 'cb'],
   kind: 'quick',
   agentTool: false, // 剪贴板内容对远端模型不可见

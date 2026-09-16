@@ -5,6 +5,7 @@ import { queryText } from '../src/shared/tool'
 export const trans: Command = {
   id: 'trans',
   title: '翻译',
+  description: '翻译文本。只要译文、无需其他处理时用它。',
   aliases: ['translate', '翻译', 'fy'],
   kind: 'quick',
   enabled: true,

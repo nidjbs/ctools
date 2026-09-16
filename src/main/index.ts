@@ -139,7 +139,36 @@ function askConfirm(win: BrowserWindow, tool: string, message: string): Promise<
   })
 }
 
-/** 会话事件 / 流式增量 / 运行态 / 人工批准 → 指定 Chat 窗口。 */
+// ask 桥：agent 提问 → 渲染层回答（同 confirm 的单槽 + 超时语义）。specs/ask.md。
+let askSeq = 0
+const pendingAsks = new Map<number, (text: string) => void>()
+let currentAsk: { id: number; question: string; options?: string[] } | null = null
+const ASK_TIMEOUT_MS = 300_000
+
+function askQuestion(win: BrowserWindow, question: string, options?: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    const id = ++askSeq
+    currentAsk = { id, question, ...(options?.length ? { options } : {}) }
+    const timer = setTimeout(() => {
+      pendingAsks.delete(id)
+      if (currentAsk?.id === id) currentAsk = null
+      resolve('（用户未回答）') // 超时默认不回答，避免挂死 agent 循环
+    }, ASK_TIMEOUT_MS)
+    pendingAsks.set(id, (text) => {
+      clearTimeout(timer)
+      pendingAsks.delete(id)
+      if (currentAsk?.id === id) currentAsk = null
+      resolve(text)
+    })
+    const send = () => {
+      if (!win.isDestroyed()) win.webContents.send('tool:ask', { id, question, options })
+    }
+    if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send)
+    else send()
+  })
+}
+
+/** 会话事件 / 流式增量 / 运行态 / 人工批准 / 提问 → 指定 Chat 窗口。 */
 const ioFor = (win: BrowserWindow): ChatIO => ({
   onEvent: (ev) => {
     if (!win.isDestroyed()) win.webContents.send('session:event', ev)
@@ -151,6 +180,7 @@ const ioFor = (win: BrowserWindow): ChatIO => ({
     if (!win.isDestroyed()) win.webContents.send('session:running', running)
   },
   onConfirm: (tool, message) => askConfirm(win, tool, message),
+  onAsk: (question, options) => askQuestion(win, question, options),
 })
 
 /** 注册/重绑全局热键（空串或非法则跳过；每次全量重注册）。 */
@@ -297,6 +327,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('session:transcript', () => chat.transcript())
   ipcMain.handle('session:running', () => chat.isRunning())
   ipcMain.handle('session:pendingConfirm', () => currentConfirm)
+  ipcMain.handle('session:pendingAsk', () => currentAsk)
 
   // plan 模式：模式读写 / 计划批准 / 重规划 / 放弃 / 待批准拉取（specs/plan-mode.md）
   const broadcastMode = () => {
@@ -338,6 +369,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('memory:pin', (_e, id: string, pinned: boolean) => ctx.memory?.setPinned(id, !!pinned))
   ipcMain.handle('tool:confirm', (_e, id: number, ok: boolean) => {
     pendingConfirms.get(id)?.(!!ok)
+  })
+  ipcMain.handle('tool:answer', (_e, id: number, text: string) => {
+    pendingAsks.get(id)?.(String(text ?? '').trim())
   })
 
   launcherWin = makeWindow('launcher')

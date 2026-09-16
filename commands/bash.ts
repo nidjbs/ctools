@@ -15,6 +15,7 @@ function gate(ctx: Ctx, cmd: string) {
 export const bashCmd: Command = {
   id: 'bash',
   title: '执行命令',
+  description: '在 shell 执行命令（每次需用户批准；默认禁网）。有专用工具时优先用专用工具。',
   aliases: ['run', 'sh', 'shell', '执行'],
   kind: 'quick',
   agentTool: true, // agent 可发起，但每次执行仍需 Chat 内人工批准（onConfirm → confirmApproved）

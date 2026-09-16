@@ -55,6 +55,18 @@ function matchTemplates(q: string, list: Template[]): Template[] {
 
 function ResultView({ result, onCopy }: { result: CommandResult; onCopy?: () => void }) {
   const [hov, setHov] = useState(-1)
+  if (result.type === 'ask') {
+    // Launcher 没有可回填的对话上下文：只展示问题并引导去对话里问
+    return (
+      <div className="result-text">
+        <div className="li-sub">ask 用于对话中向 agent 反问；Launcher 里只展示问题：</div>
+        <pre className="result-pre">{result.question}</pre>
+        {result.options && result.options.length > 0 && (
+          <div className="li-sub">候选：{result.options.join(' / ')}</div>
+        )}
+      </div>
+    )
+  }
   if (result.type === 'text') {
     return (
       <div className="result-text">

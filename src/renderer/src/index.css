@@ -565,6 +565,36 @@ body {
   color: #111;
 }
 
+/* Chat 内 agent 提问（ask）：与批准条同构，但用蓝色区分「要回答」而非「要批准」 */
+.ask-box {
+  border: 1px solid #3c4a8a;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #1d2133;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ask-q {
+  font-size: 13px;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.ask-opts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ask-opts .btn {
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: #2f4fcf;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
 .chat-error {
   padding: 6px 10px;
   border-radius: 8px;

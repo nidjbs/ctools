@@ -195,6 +195,34 @@ test('/save 沉淀模板可删除：⭐ 显示 → 确认删除 → 从列表消
   }
 })
 
+test('agent 提问（ask）：Chat 内出现提问条，回答后回填并继续', async () => {
+  const behavior: MockBehavior = {
+    toolName: 'ask',
+    toolArgs: JSON.stringify({ question: '选哪个方案？', options: ['A', 'B'] }),
+    streamReply: (t) => `已收到:${t}`,
+  }
+  const l = await launchApp({ behavior })
+  try {
+    const bar = l.launcher.locator('.launcher .bar')
+    const win = l.app.waitForEvent('window')
+    await bar.fill('帮我选一个方案')
+    await bar.press('Enter')
+    const chat = await win
+    await chat.waitForSelector('.chat-input-row .bar', { state: 'visible', timeout: 15_000 })
+
+    // 提问条 + 候选项按钮
+    await expect(chat.locator('.ask-box')).toContainText('选哪个方案？', { timeout: 15_000 })
+    await expect(chat.locator('.ask-opts .btn')).toHaveCount(2)
+
+    // 点候选项 → 提问条消失，agent 拿到回答继续
+    await chat.locator('.ask-opts .btn', { hasText: 'B' }).click()
+    await expect(chat.locator('.ask-box')).toHaveCount(0)
+    await expect(chat.locator('.bubble.assistant').last()).toContainText('已收到:', { timeout: 20_000 })
+  } finally {
+    await l.cleanup()
+  }
+})
+
 test('设置：剪贴板本地模型别名字段存在并保存落盘', async () => {
   const l = await launchApp({})
   try {

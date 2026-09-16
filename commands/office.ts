@@ -97,6 +97,7 @@ export async function parsePdf(buf: Buffer): Promise<string> {
 export const officeRead: Command = {
   id: 'office_read',
   title: '读取文档',
+  description: '读取 docx/xlsx/pdf 等文档的文本。纯文本文件用 file_read。',
   aliases: ['read_doc', '文档', 'office'],
   kind: 'quick',
   agentTool: true,

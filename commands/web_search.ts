@@ -51,6 +51,7 @@ function gate(ctx: Ctx) {
 export const webSearchCmd: Command = {
   id: 'web_search',
   title: '联网搜索',
+  description: '联网搜索（默认关闭；开启后每次仍需用户批准）。本地文件能回答的不要联网。',
   aliases: ['搜索', 'search', 'ddg', '查一下'],
   kind: 'quick',
   agentTool: true,

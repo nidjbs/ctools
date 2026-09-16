@@ -12,9 +12,13 @@ export interface AgentCallbacks extends StreamHandlers {
   onEvent(ev: SessionEvent): void
   /** 工具返回 confirm 时的人工在环批准：true → 以 confirmApproved 重放执行；false → 记为用户未批准。 */
   onConfirm?(tool: string, message: string): Promise<boolean>
+  /** ask 工具：向用户提问并等待回答。specs/ask.md。 */
+  onAsk?(question: string, options?: string[]): Promise<string>
 }
 
 const MAX_TURNS = 50 // 单次用户输入的最大模型请求轮次上限（防 runaway；用户可随时取消）
+/** 同工具同参数超过该次数即追加「换个策略」提示（specs/agent-loop.md §2）。 */
+const LOOP_WARN_AFTER = 3
 
 export interface AgentLoopOpts {
   signal?: AbortSignal
@@ -56,6 +60,66 @@ function buildTurnSystemSafe(ctx: Ctx, tools: string[]): string {
   }
 }
 
+/** 递归按键名排序（canonical），使 `{a,b}` 与 `{b,a}` 视为同一参数。 */
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical)
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>
+    return Object.keys(o)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = canonical(o[k])
+        return acc
+      }, {})
+  }
+  return v
+}
+
+/** 规范化工具参数（键序无关），供循环检测比对；解析失败用原始串。 */
+function normalizeArgs(raw: string | undefined): string {
+  if (!raw) return ''
+  try {
+    return JSON.stringify(canonical(JSON.parse(raw)))
+  } catch {
+    return raw
+  }
+}
+
+/** 执行一个工具调用并返回其 result 文本（含白名单、confirm、ask 三种闸门）。 */
+async function runToolCall(
+  call: ToolCallMsg,
+  allowed: Set<string>,
+  registry: Registry,
+  ctx: Ctx,
+  cb: AgentCallbacks,
+): Promise<string> {
+  if (!allowed.has(call.function.name)) {
+    // 白名单兜底：模型幻觉出未提供的工具（写命令等）绝不执行
+    return `错误: 工具 ${call.function.name} 不在 agent 白名单`
+  }
+  try {
+    const cmd = registry.get(call.function.name)
+    if (!cmd) throw new Error(`未知工具 ${call.function.name}`)
+    const args = call.function.arguments ? JSON.parse(call.function.arguments) : undefined
+    const r = await cmd.run(args, ctx)
+    if (r.type === 'confirm') {
+      // 人工在环：bash / 破坏性写删等需用户批准
+      const ok = cb.onConfirm ? await cb.onConfirm(call.function.name, r.message) : false
+      if (!ok) return `用户未批准：${r.message}`
+      const rr = await cmd.run(args, { ...ctx, confirmApproved: true })
+      return rr.type === 'text' ? rr.text : JSON.stringify(rr)
+    }
+    if (r.type === 'ask') {
+      // 人工在环：向用户澄清，答案回填为工具结果
+      const answer = cb.onAsk ? (await cb.onAsk(r.question, r.options)).trim() : ''
+      return answer ? `用户回答：${answer}` : '（用户未回答）'
+    }
+    return r.type === 'text' ? r.text : JSON.stringify(r)
+  } catch (e) {
+    return `错误: ${(e as Error).message}`
+  }
+}
+
 /** 把 session 首条 system.context 写好（默认定位 + 可选 agent 规则），供 UI 先建会话。 */
 export function seedSystem(session: Session, content: string): void {
   if (!content.trim()) return
@@ -77,6 +141,8 @@ export async function agentLoop(
   const turnSystem = opts.turnSystem ?? buildTurnSystemSafe(ctx, [...allowed])
   // 摘要器走 defaultAlias：被摘要的内容本就在上下文里，不产生新的模型出口
   const summarize = makeSummarizer((req) => ctx.gateway.chat(req), ctx.config.defaultAlias)
+  /** 循环检测计数：本 pass 内「工具名 + 规范化参数」的出现次数。 */
+  const toolUseCount = new Map<string, number>()
   for (let turn = 1; turn <= maxTurns; turn++) {
     // 每次模型请求前做上下文压缩：大结果外置 + 超水位时摘要后 shadow
     await compactIfNeeded(session, {
@@ -121,6 +187,7 @@ export async function agentLoop(
     cb.onEvent(session.transcript().at(-1)!)
     if (toolCalls.length === 0) return content
 
+    // 事件顺序必须确定：先按模型给出的顺序落全部 tool.call
     for (const call of toolCalls) {
       session.append('tool.call', {
         tool_name: call.function.name,
@@ -128,31 +195,31 @@ export async function agentLoop(
         arguments: call.function.arguments,
       })
       cb.onEvent(session.transcript().at(-1)!)
-      let result: string
-      if (!allowed.has(call.function.name)) {
-        // 白名单兜底：模型幻觉出未提供的工具（写命令等）绝不执行
-        result = `错误: 工具 ${call.function.name} 不在 agent 白名单`
-      } else {
-        try {
-          const cmd = registry.get(call.function.name)
-          if (!cmd) throw new Error(`未知工具 ${call.function.name}`)
-          const args = call.function.arguments ? JSON.parse(call.function.arguments) : undefined
-          const r = await cmd.run(args, ctx)
-          if (r.type === 'confirm') {
-            // 人工在环：bash / 破坏性写删等需用户批准
-            const ok = cb.onConfirm ? await cb.onConfirm(call.function.name, r.message) : false
-            if (!ok) result = `用户未批准：${r.message}`
-            else {
-              const rr = await cmd.run(args, { ...ctx, confirmApproved: true })
-              result = rr.type === 'text' ? rr.text : JSON.stringify(rr)
-            }
-          } else {
-            result = r.type === 'text' ? r.text : JSON.stringify(r)
-          }
-        } catch (e) {
-          result = `错误: ${(e as Error).message}`
-        }
-      }
+    }
+
+    // 并发策略（specs/agent-loop.md §1）：整批都是只读（planSafe）才并发；
+    // 只要有一个是写/删/bash/ask/记忆写入 → 整批串行（confirm 与 ask 各只有一个待处理槽）。
+    const canParallel = toolCalls.every(
+      (c) => allowed.has(c.function.name) && registry.get(c.function.name)?.planSafe === true,
+    )
+    const results: string[] = canParallel
+      ? await Promise.all(toolCalls.map((c) => runToolCall(c, allowed, registry, ctx, cb)))
+      : await (async () => {
+          const out: string[] = []
+          for (const c of toolCalls) out.push(await runToolCall(c, allowed, registry, ctx, cb))
+          return out
+        })()
+
+    // 再按同一顺序落 tool.result（并发不影响事件序）
+    toolCalls.forEach((call, i) => {
+      // 循环检测（§2）：同工具同参数第 4 次起追加提示，不阻止执行
+      const key = `${call.function.name}:${normalizeArgs(call.function.arguments)}`
+      const n = (toolUseCount.get(key) ?? 0) + 1
+      toolUseCount.set(key, n)
+      const result =
+        n > LOOP_WARN_AFTER
+          ? `${results[i]}\n[提示] 你已用相同参数调用 ${call.function.name} 第 ${n} 次。请改变策略、换参数，或向用户澄清后继续。`
+          : results[i]
       session.append('tool.result', {
         role: 'tool',
         tool_name: call.function.name,
@@ -160,7 +227,7 @@ export async function agentLoop(
         content: result,
       })
       cb.onEvent(session.transcript().at(-1)!)
-    }
+    })
   }
   return ''
 }

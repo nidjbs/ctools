@@ -12,11 +12,11 @@ const DEFAULT_PARAMS = {
   required: ['query'],
 }
 
-/** 从 Command 构建 function spec（agent 请求的 tools）。 */
+/** 从 Command 构建 function spec（agent 请求的 tools）。description =「何时用」，缺省回退 title。 */
 export function toolSpecOf(cmd: Command): ToolSpec {
   return {
     type: 'function',
-    function: { name: cmd.id, description: cmd.title, parameters: cmd.schema ?? DEFAULT_PARAMS },
+    function: { name: cmd.id, description: cmd.description ?? cmd.title, parameters: cmd.schema ?? DEFAULT_PARAMS },
   }
 }
 

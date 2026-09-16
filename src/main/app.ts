@@ -7,7 +7,9 @@ import { join } from 'node:path'
 import type { AppConfig, Ctx } from '../shared/types'
 import { trans } from '../../commands/trans'
 import { findFile } from '../../commands/find_file'
-import { fileRead, fileList, fileWrite, fileRm } from '../../commands/file'
+import { fileRead, fileList, fileWrite, fileRm, fileEdit } from '../../commands/file'
+import { grepCmd } from '../../commands/grep'
+import { askCmd } from '../../commands/ask'
 import { clipboardCmd } from '../../commands/clipboard'
 import { officeRead } from '../../commands/office'
 import { bashCmd } from '../../commands/bash'
@@ -25,9 +27,12 @@ export interface App {
 const builtinCommands = [
   trans,
   findFile,
+  grepCmd,
+  askCmd,
   fileRead,
   fileList,
   fileWrite,
+  fileEdit,
   fileRm,
   clipboardCmd,
   officeRead,

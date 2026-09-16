@@ -103,6 +103,8 @@ export default function Chat() {
   const [cmdOut, setCmdOut] = useState<string | null>(null) // 面板执行的 quick 结果
   const [quickConfirm, setQuickConfirm] = useState<{ id: string; input: string; message: string } | null>(null)
   const [approval, setApproval] = useState<{ id: number; tool: string; message: string } | null>(null)
+  const [ask, setAsk] = useState<{ id: number; question: string; options?: string[] } | null>(null)
+  const [askText, setAskText] = useState('')
   const [planPending, setPlanPending] = useState(false) // plan.propose 后待批准（门控联想等）
   const [evs, setEvs] = useState<SessionEvent[]>([]) // 最近一次 transcript，供计划卡推导
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -162,10 +164,13 @@ export default function Chat() {
     const offRunning = window.api.onSessionRunning(setRunning)
     // 工具人工在环批准（bash/破坏性写删）
     const offApprove = window.api.onToolConfirm((req) => setApproval(req))
+    const offAsk = window.api.onToolAsk((req) => setAsk(req))
     // 会话被切换（attach/new）→ 清瞬态后重拉 transcript（session:reset）
     const offReset = window.api.onSessionReset(() => {
       setDraftText('')
       setApproval(null)
+      setAsk(null)
+      setAskText('')
       setQuickConfirm(null)
       setPlanPending(false)
       setCmdOut(null)
@@ -180,11 +185,15 @@ export default function Chat() {
     void window.api.session.pendingPlan().then((p) => {
       if (p) setPlanPending(true)
     })
+    void window.api.session.pendingAsk().then((p) => {
+      if (p) setAsk(p)
+    })
     return () => {
       offDelta()
       offEvent()
       offRunning()
       offApprove()
+      offAsk()
       offReset()
     }
   }, [])
@@ -238,6 +247,15 @@ export default function Chat() {
     const { id } = approval
     setApproval(null)
     void window.api.session.confirm(id, ok)
+  }
+
+  /** 回答 agent 的提问（空 = 未回答）。 */
+  function answerAsk(text: string) {
+    if (!ask) return
+    const { id } = ask
+    setAsk(null)
+    setAskText('')
+    void window.api.session.answerAsk(id, text)
   }
 
   /** plan 模式：批准执行 / 按反馈重规划 / 放弃（由计划卡调用）。 */
@@ -460,6 +478,43 @@ export default function Chat() {
             </button>
             <button className="btn" onClick={() => decideApproval(false)}>
               拒绝
+            </button>
+          </div>
+        </div>
+      )}
+      {ask && (
+        <div className="ask-box">
+          <div className="ask-q">
+            <strong>{ask.question}</strong>
+          </div>
+          {ask.options && ask.options.length > 0 && (
+            <div className="ask-opts">
+              {ask.options.map((o) => (
+                <button key={o} className="btn" onClick={() => answerAsk(o)}>
+                  {o}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="confirm-actions">
+            <input
+              className="bar"
+              autoFocus
+              placeholder="回答问题…"
+              value={askText}
+              onChange={(e) => setAskText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  answerAsk(askText)
+                }
+              }}
+            />
+            <button className="btn approve" onClick={() => answerAsk(askText)}>
+              回答
+            </button>
+            <button className="btn" onClick={() => answerAsk('')}>
+              跳过
             </button>
           </div>
         </div>

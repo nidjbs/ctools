@@ -17,6 +17,7 @@ const KIND_ENUM = ['fact', 'preference', 'procedure']
 export const rememberCmd: Command = {
   id: 'remember',
   title: '记住',
+  description: '把用户的事实/偏好长期记住，跨会话生效。只在用户明确要求或事实稳定时用。',
   aliases: ['记住', '记下', '记忆', 'memorize'],
   kind: 'quick',
   agentTool: true, // 写有副作用 → 不进 plan 工具集（无 planSafe）
@@ -55,6 +56,7 @@ export const rememberCmd: Command = {
 export const forgetCmd: Command = {
   id: 'forget',
   title: '忘记',
+  description: '删除一条已记住的内容（按 id）。用户要求忘记某事时用。',
   aliases: ['忘记', '删除记忆', 'forget'],
   kind: 'quick',
   agentTool: true,
@@ -77,6 +79,7 @@ export const forgetCmd: Command = {
 export const recallCmd: Command = {
   id: 'recall',
   title: '回忆',
+  description: '检索此前记住的内容。需要用户偏好/历史事实时先查这里。',
   aliases: ['回忆', 'recall', 'memo'],
   kind: 'quick',
   agentTool: true,
