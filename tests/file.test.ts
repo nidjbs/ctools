@@ -169,6 +169,46 @@ describe('agent 白名单（file 全套可调；破坏性操作被 confirm 闸�
   })
 })
 
+describe('file_read 行区间（offset/limit，specs/file-tools.md）', () => {
+  it('给定 offset/limit → 带行号返回片段', async () => {
+    writeFileSync(join(root, 'lines.txt'), 'l1\nl2\nl3\nl4\n')
+    const r = await fileRead.run({ path: 'lines.txt', offset: 2, limit: 2 }, ctx)
+    // 行号宽度随总行数（4 行 → 1 位）
+    expect((r as { text: string }).text).toBe('2| l2\n3| l3')
+  })
+
+  it('只给 offset → 到文件末尾', async () => {
+    writeFileSync(join(root, 'lines.txt'), 'l1\nl2\nl3\n')
+    const r = await fileRead.run({ path: 'lines.txt', offset: 2 }, ctx)
+    expect((r as { text: string }).text).toBe('2| l2\n3| l3')
+  })
+
+  it('不给区间 → 保持原行为（原文、无行号）', async () => {
+    writeFileSync(join(root, 'lines.txt'), 'l1\nl2\n')
+    const r = await fileRead.run({ path: 'lines.txt' }, ctx)
+    expect((r as { text: string }).text).toBe('l1\nl2\n')
+  })
+
+  it('末尾换行不多算行；offset 越界有提示', async () => {
+    writeFileSync(join(root, 'lines.txt'), 'l1\nl2\n')
+    const ok = await fileRead.run({ path: 'lines.txt', offset: 1, limit: 9 }, ctx)
+    expect((ok as { text: string }).text).toBe('1| l1\n2| l2')
+    const over = await fileRead.run({ path: 'lines.txt', offset: 99 }, ctx)
+    expect((over as { text: string }).text).toContain('超出文件范围，共 2 行')
+  })
+
+  it('limit 上限 2000 行', async () => {
+    writeFileSync(join(root, 'many.txt'), Array.from({ length: 3000 }, (_, i) => `r${i}`).join('\n'))
+    const r = await fileRead.run({ path: 'many.txt', offset: 1, limit: 99999 }, ctx)
+    expect((r as { text: string }).text.split('\n')).toHaveLength(2000)
+  })
+
+  it('行区间仍受 file_roots 约束（越界拒绝）', async () => {
+    const r = await fileRead.run({ path: '/etc/hosts', offset: 1, limit: 1 }, ctx)
+    expect((r as { text: string }).text).toContain('拒绝')
+  })
+})
+
 describe('spill 目录：读白名单而非写白名单（specs/context.md）', () => {
   let spill: string
   let sctx: Ctx

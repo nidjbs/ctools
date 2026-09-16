@@ -1,6 +1,8 @@
 # file 工具 — 行为契约
 
-> 阶段划分：Phase 1 = 只读（read/list，可放开 agent）；Phase 2 = 写/删（write/rm，**通用两段 confirm**，非 agentTool）。
+> 阶段划分：Phase 1 = 只读（read/list，可放开 agent）；Phase 2 = 写/删（write/rm，**通用两段 confirm**）。
+> 全套均为 `agentTool`：破坏性操作不是"不给 agent"，而是**恒过确认闸门**（agent 无免批通道）。
+> 精确片段替换见 `specs/file-edit.md`；内容搜索见 `specs/grep.md`。
 
 ## 触发
 
@@ -19,6 +21,12 @@
 
 ### `file_read`
 - 输出：文件 UTF-8 文本；超过 256 KB 截断并标注总长；空文件返回 `(空文件)`。
+- **行区间**（可选 `offset` / `limit`）：给定任一者时改为**按行返回带行号**的片段，
+  格式 `  12| 行内容`（行号右对齐、固定宽度）。
+  - `offset` 为 **1-based** 起始行；缺省 1。`limit` 为行数；缺省到文件末尾。
+  - `limit` 硬上限 2000 行；`offset < 1` 视为 1；`offset` 超出总行数 → 返回 `(超出文件范围，共 N 行)`。
+  - 不给 `offset`/`limit` → 保持原行为（整份原文，无行号），向后兼容。
+  - 用途：大文件先 `grep` 定位，再按区间精读，最后 `file_edit` 精确替换。
 - 失败：路径越界 → `拒绝：路径不在 file_roots 内…`；不存在/不可读 → `读取失败: <原因>`。
 
 ### `file_list`
