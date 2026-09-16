@@ -97,9 +97,11 @@ npm run dev          # 本地开发运行（Electron）
 |---|---|---|
 | `trans` | 翻译 · translate · fy | 翻译文本 |
 | `find_file` | 找文件 · find · 搜索 · locate | 在文件根目录内用系统索引搜索，返回路径列表（回车复制） |
-| `file_read` | 读文件 · read · cat | 读取文本文件内容 |
+| `grep` | 搜索内容 · grep | 在文件**内容**里按模式搜，返回 `路径:行号`（找文件用 `find_file`，找内容用这个） |
+| `file_read` | 读文件 · read · cat | 读取文本文件内容；大文件可只读行区间（`offset`/`limit`，带行号） |
 | `file_list` | 列目录 · ls · dir | 列目录 |
 | `file_write` | 写文件 · write | 写入/覆盖文件（覆盖已存在需批准） |
+| `file_edit` | 编辑 · edit · replace | 精确替换文件里的某段文字（改一行不必重写整份；默认要求唯一匹配） |
 | `file_rm` | 删文件 · rm · del | 删除文件（**恒需批准**） |
 | `office_read` | 读文档 · read_doc · office | 提取 docx / xlsx / pdf / txt 等文本 |
 | `clipboard` | 剪贴板 · clip · cb | 最近历史列表；`clipboard <内容>` 语义召回（见隐私） |
@@ -109,8 +111,11 @@ npm run dev          # 本地开发运行（Electron）
 | `recall` | 回忆 · memo | 在长期记忆里检索（返回命中的正文） |
 | `forget` | 忘记 | 删除一条记忆（按 id） |
 | `memory` | 记忆列表 · memories | 列出全部记忆（点击复制）；**agent 不可见**，仅供你浏览 |
+| `ask` | 提问 · ask | agent 向你反问以澄清需求（对话窗内弹出提问条；也可点候选项） |
 
-部分命令同时是 **agent 可调用的工具**（`file_read/list/write/rm`、`find_file`、`office_read`、`bash`、`web_search`）；`trans`、`clipboard` 刻意**不给 agent 调用**（见隐私）。agent 白名单外的工具一律拒绝，防「幻觉调用」。
+部分命令同时是 **agent 可调用的工具**（`file_read/list/write/edit/rm`、`find_file`、`grep`、`office_read`、`bash`、`web_search`、`remember`/`recall`/`forget`、`ask`）；`trans`、`clipboard`、`memory` 刻意**不给 agent 调用**（隐私/浏览入口）。agent 白名单外的工具一律拒绝，防「幻觉调用」。
+
+一轮里互相独立的**只读**工具会并行执行；同一工具以相同参数被反复调用时会收到「换个策略」提示（防空转）。
 
 ---
 
