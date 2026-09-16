@@ -2,9 +2,10 @@
 // 对应 docs §9.6 伪码。plan 模式 = 同一循环换只读工具集 + promptExtra（specs/plan-mode.md）。
 import type { Ctx, StreamHandlers, SessionEvent } from '../shared/types'
 import { Registry } from './registry'
-import { Session } from './session'
+import { Session, type ChatMessage } from './session'
 import { toolSpecOf } from '../shared/tool'
-import { compactIfNeeded } from './context'
+import { compactIfNeeded, makeSummarizer } from './context'
+import { buildTurnSystem } from './systemPrompt'
 
 export interface AgentCallbacks extends StreamHandlers {
   /** 每个会话事件（user/assistant/tool.call/result…）都推给 UI。 */
@@ -23,12 +24,36 @@ export interface AgentLoopOpts {
   promptExtra?: string
   /** 本 pass 轮数上限；默认 MAX_TURNS。 */
   maxTurns?: number
+  /** 覆盖 turn 级 system 段（环境/记忆）；缺省由 buildTurnSystem 构建。供测试注入。 */
+  turnSystem?: string
 }
 
 interface ToolCallMsg {
   id: string
   type: string
   function: { name: string; arguments: string }
+}
+
+/** 插入到开头连续 system 消息之后（保持「角色 → 环境/记忆 → 历史」顺序，见 R3）。 */
+function insertSystem(messages: ChatMessage[], content: string): void {
+  if (!content.trim()) return
+  let i = 0
+  while (i < messages.length && messages[i].role === 'system') i++
+  messages.splice(i, 0, { role: 'system', content })
+}
+
+/** 组装环境/记忆段；失败则回退为只注入会话角色（不阻断请求，见 specs/system-prompt.md）。 */
+function buildTurnSystemSafe(ctx: Ctx, tools: string[]): string {
+  try {
+    return buildTurnSystem({
+      config: ctx.config,
+      tools,
+      memoryIndex: ctx.memory?.index(),
+      pinnedText: ctx.memory?.pinnedText(),
+    })
+  } catch {
+    return ''
+  }
 }
 
 /** 把 session 首条 system.context 写好（默认定位 + 可选 agent 规则），供 UI 先建会话。 */
@@ -46,10 +71,19 @@ export async function agentLoop(
   opts: AgentLoopOpts = {},
 ): Promise<string> {
   const maxTurns = opts.maxTurns ?? MAX_TURNS
+  const allowed = new Set(opts.tools ?? registry.toolIds())
+  // turn 级快照（R2）：环境/记忆只构建一次，turn 内所有模型请求复用同一份字节，
+  // 避免 agent 中途 remember 改索引导致 turn 内前缀缓存反复失效。
+  const turnSystem = opts.turnSystem ?? buildTurnSystemSafe(ctx, [...allowed])
+  // 摘要器走 defaultAlias：被摘要的内容本就在上下文里，不产生新的模型出口
+  const summarize = makeSummarizer((req) => ctx.gateway.chat(req), ctx.config.defaultAlias)
   for (let turn = 1; turn <= maxTurns; turn++) {
-    // 每次模型请求前做上下文压缩：裁剪大工具结果 + 接近满时 shadow 最旧消息
-    compactIfNeeded(session)
-    const allowed = new Set(opts.tools ?? registry.toolIds())
+    // 每次模型请求前做上下文压缩：大结果外置 + 超水位时摘要后 shadow
+    await compactIfNeeded(session, {
+      spillDir: ctx.spillDir,
+      summarize,
+      ...(ctx.config.contextTokens ? { capacityTokens: ctx.config.contextTokens } : {}),
+    })
     const tools = [...allowed]
       .map((id) => registry.get(id)!)
       .map(toolSpecOf)
@@ -71,6 +105,7 @@ export async function agentLoop(
     }
     const messages = session.messages()
     if (opts.promptExtra) messages.unshift({ role: 'system', content: opts.promptExtra })
+    insertSystem(messages, turnSystem) // 角色之后、历史之前（R3）
     await ctx.gateway.chatStream(
       { model: ctx.config.defaultAlias, messages, tools },
       stream,

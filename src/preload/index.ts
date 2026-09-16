@@ -65,6 +65,11 @@ const api: CtoolsApi = {
     save: handle('saves:save'),
     remove: handle('saves:remove'),
   },
+  memory: {
+    list: handle('memory:list'),
+    remove: handle('memory:remove'),
+    pin: handle('memory:pin'),
+  },
   onSessionEvent: (cb) => {
     const listener = (_e: unknown, ev: SessionEvent) => cb(ev)
     ipcRenderer.on('session:event', listener)

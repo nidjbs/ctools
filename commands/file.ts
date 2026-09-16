@@ -27,6 +27,12 @@ function denied(roots: string[]): { type: 'text'; text: string } {
   return { type: 'text', text: `拒绝：路径不在 file_roots 内（${roots.join(', ') || '未配置'}）` }
 }
 
+/** 读白名单 = file_roots ∪ spill 目录（大结果外置后可回取）；**写仍限 file_roots**。 */
+function readRoots(ctx: Ctx): string[] {
+  const roots = ctx.config.fileRoots.filter(Boolean)
+  return ctx.spillDir ? [...roots, ctx.spillDir] : roots
+}
+
 /** 写/删是否需要确认：policy 判定且当前调用未获放行 → 返回 confirm 结果。 */
 function gateConfirm(ctx: Ctx, op: 'create' | 'overwrite' | 'append' | 'delete', p: string, exists: boolean) {
   const want = needConfirm(ctx.config.writeConfirm, op, exists)
@@ -47,7 +53,7 @@ export const fileRead: Command = {
   run: async (input, ctx) => {
     const target = pathOf(input)
     if (!target) return { type: 'text', text: '用法: file_read <绝对路径 或 file_roots 下相对路径>' }
-    const p = await realInside(ctx.config.fileRoots, target)
+    const p = await realInside(readRoots(ctx), target)
     if (!p) return denied(ctx.config.fileRoots)
     try {
       const text = readFileSync(p, 'utf-8')
@@ -71,7 +77,7 @@ export const fileList: Command = {
   schema: PATH_SCHEMA,
   run: async (input, ctx) => {
     const target = pathOf(input) || '.'
-    const p = await realInside(ctx.config.fileRoots, target)
+    const p = await realInside(readRoots(ctx), target)
     if (!p) return denied(ctx.config.fileRoots)
     try {
       const items = readdirSync(p, { withFileTypes: true })

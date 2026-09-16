@@ -1,11 +1,12 @@
 // 设置窗（#/settings）：gateway 状态/托管、网络与别名、偏好、命令启停。
 // 数据经类型化 IPC（config.get/update, commands.all, gateway.*）。specs/settings.md。
 import { useEffect, useRef, useState } from 'react'
-import type { AppConfig, CommandMeta } from '../../shared/types'
+import type { AppConfig, CommandMeta, MemoryMeta } from '../../shared/types'
 
 export default function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null)
   const [cmds, setCmds] = useState<CommandMeta[]>([])
+  const [mems, setMems] = useState<MemoryMeta[]>([])
   const [status, setStatus] = useState<'running' | 'stopped'>('stopped')
   const [models, setModels] = useState<string[]>([])
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -22,6 +23,7 @@ export default function Settings() {
     setCfg(c)
     setCmds(all)
     setStatus(s)
+    setMems(await window.api.memory.list().catch(() => []))
     setModels(await window.api.gateway.models().catch(() => []))
   }
 
@@ -97,6 +99,16 @@ export default function Settings() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function removeMem(id: string) {
+    await window.api.memory.remove(id).catch(() => {})
+    setMems(await window.api.memory.list().catch(() => []))
+  }
+
+  async function pinMem(id: string, pinned: boolean) {
+    await window.api.memory.pin(id, pinned).catch(() => {})
+    setMems(await window.api.memory.list().catch(() => []))
   }
 
   async function toggleCmd(id: string, on: boolean) {
@@ -177,6 +189,14 @@ export default function Settings() {
           />
           <span>bash 联网——默认关（命令经 OS 沙箱禁网）；开启后 bash 可联网，执行仍每次人工确认</span>
         </label>
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={cfg.injectDate !== false}
+            onChange={(e) => set({ injectDate: e.target.checked })}
+          />
+          <span>每轮注入当天日期——关掉可让 system 前缀完全稳定（省缓存），但模型需自行 bash date 才知道今天</span>
+        </label>
       </section>
 
       <section>
@@ -237,6 +257,41 @@ export default function Settings() {
             <textarea className="bar area" value={cfg.fileRoots.join('\n')} onChange={(e) => set({ fileRoots: e.target.value.split('\n') })} />
           </label>
         </div>
+      </section>
+
+      <section>
+        <h2>记忆</h2>
+        <p className="hint">
+          agent 在对话里「记住…」的内容。索引常驻注入模型；正文仅在 agent 主动 recall 时进入。
+          <strong>「常驻」会把正文每轮都发给当前模型（可能为远端）——请只对不敏感内容开启。</strong>
+        </p>
+        {mems.length === 0 ? (
+          <div className="dim">（还没有记忆）</div>
+        ) : (
+          <ul className="mems">
+            {mems.map((m) => (
+              <li key={m.id}>
+                <input
+                  type="checkbox"
+                  checked={!!m.pinned}
+                  title="常驻注入（每轮发给模型）"
+                  onChange={(e) => void pinMem(m.id, e.target.checked)}
+                />
+                <span className="mem-main">
+                  <span className="m-title">
+                    {m.pinned ? '⭐ ' : ''}
+                    {m.title}
+                    {m.kind && <span className="tag">{m.kind}</span>}
+                  </span>
+                  <span className="mem-gist">{m.gist}</span>
+                </span>
+                <button className="mem-del" title="删除这条记忆" onClick={() => void removeMem(m.id)}>
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section>

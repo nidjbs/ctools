@@ -381,6 +381,54 @@ body {
 .dim {
   color: #777;
 }
+
+/* ---- Settings：记忆列表（审阅 / 删除 / 常驻开关） ---- */
+.settings .hint {
+  font-size: 12px;
+  color: #999;
+  line-height: 1.5;
+}
+.settings .hint strong {
+  color: #e8c566;
+}
+.mems {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mems li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #262633;
+}
+.mem-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.mem-gist {
+  font-size: 12px;
+  color: #999;
+  word-break: break-word;
+}
+.mem-del {
+  border: none;
+  background: transparent;
+  color: #ff9aa2;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.mem-del:hover {
+  background: #3a2228;
+}
 .settings button {
   border: none;
   border-radius: 6px;

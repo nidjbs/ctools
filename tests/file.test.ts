@@ -168,3 +168,37 @@ describe('agent 白名单（file 全套可调；破坏性操作被 confirm 闸�
     expect(existsSync(join(root, 'keep2.txt'))).toBe(true)
   })
 })
+
+describe('spill 目录：读白名单而非写白名单（specs/context.md）', () => {
+  let spill: string
+  let sctx: Ctx
+  beforeAll(() => {
+    spill = mkdtempSync(join(tmpdir(), 'ctools-spill-files-'))
+    writeFileSync(join(spill, 'big.txt'), '外置的大结果全文')
+    sctx = { ...ctx, spillDir: spill }
+  })
+  afterAll(() => rmSync(spill, { recursive: true, force: true }))
+
+  it('file_read / file_list 可访问 spill（大结果可回取）', async () => {
+    const r = await fileRead.run({ path: join(spill, 'big.txt') }, sctx)
+    expect(r).toMatchObject({ type: 'text' })
+    expect((r as { text: string }).text).toContain('外置的大结果全文')
+    const l = await fileList.run({ path: spill }, sctx)
+    expect(l).toMatchObject({ type: 'list' })
+  })
+
+  it('file_write / file_rm 仍拒绝 spill（写白名单不含外置目录）', async () => {
+    const w = await fileWrite.run({ path: join(spill, 'new.txt'), content: 'x' }, sctx)
+    expect((w as { text: string }).text).toContain('拒绝')
+    expect(existsSync(join(spill, 'new.txt'))).toBe(false)
+
+    const d = await fileRm.run({ path: join(spill, 'big.txt') }, sctx)
+    expect((d as { text: string }).text).toContain('拒绝')
+    expect(existsSync(join(spill, 'big.txt'))).toBe(true)
+  })
+
+  it('无 spillDir 时行为不变（spill 路径被拒）', async () => {
+    const r = await fileRead.run({ path: join(spill, 'big.txt') }, ctx)
+    expect((r as { text: string }).text).toContain('拒绝')
+  })
+})

@@ -16,6 +16,7 @@ export function defaultConfig(): AppConfig {
     managedGateway: false,
     webSearchEnabled: false,
     bashNetwork: false,
+    injectDate: true,
     enabledCommands: {},
   }
 }

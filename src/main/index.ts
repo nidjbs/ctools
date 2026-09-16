@@ -332,6 +332,10 @@ app.whenReady().then(async () => {
     return { id: s.id, title: s.title, instruction: s.instruction, paramHint: s.paramHint }
   })
   ipcMain.handle('saves:remove', (_e, id: string) => removeSave(userData, id))
+  // 记忆审阅（人在环：可见、可删、可设为常驻）
+  ipcMain.handle('memory:list', () => ctx.memory?.list() ?? [])
+  ipcMain.handle('memory:remove', (_e, id: string) => ctx.memory?.forget(id))
+  ipcMain.handle('memory:pin', (_e, id: string, pinned: boolean) => ctx.memory?.setPinned(id, !!pinned))
   ipcMain.handle('tool:confirm', (_e, id: number, ok: boolean) => {
     pendingConfirms.get(id)?.(!!ok)
   })

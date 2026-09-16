@@ -78,6 +78,11 @@ export class ChatManager {
     return { id: this.session.id }
   }
 
+  /** 每轮 ctx：附上活动会话 id，供 memory 记录来源（审计）。 */
+  private runCtx(): Ctx {
+    return this.session ? { ...this.ctx, sessionId: this.session.id } : this.ctx
+  }
+
   private cbs(io: ChatIO): AgentCallbacks {
     return {
       onContent: (d) => io.onDelta(d),
@@ -122,7 +127,7 @@ export class ChatManager {
     const mode = this.mode
     await this.withRun(io, async (signal) => {
       if (mode === 'plan') await this.runPlanPass(io, signal, { seed: text })
-      else await runAgentTurn(this.session!, text, this.ctx, this.registry, this.cbs(io), { signal })
+      else await runAgentTurn(this.session!, text, this.runCtx(), this.registry, this.cbs(io), { signal })
     })
   }
 
@@ -139,7 +144,7 @@ export class ChatManager {
         `用户已批准以下计划，请按其执行（执行中如遇破坏性操作仍会请用户确认）：\n\n${plan.text}\n\n` +
         '执行协议：每一步开始时先单独输出一行“第 N 步：…”（N 对应该计划里的步骤编号），再做这一步的操作；' +
         '完成一步再进入下一步，最后给出执行完成小结。'
-      await agentLoop(this.session!, this.ctx, this.registry, this.cbs(io), {
+      await agentLoop(this.session!, this.runCtx(), this.registry, this.cbs(io), {
         signal,
         tools: this.registry.toolIds(),
         promptExtra: extra,
@@ -178,13 +183,13 @@ export class ChatManager {
     const extra = planPrompt(opts.feedback)
     const plan =
       opts.seed !== undefined
-        ? await runAgentTurn(this.session!, opts.seed, this.ctx, this.registry, this.cbs(io), {
+        ? await runAgentTurn(this.session!, opts.seed, this.runCtx(), this.registry, this.cbs(io), {
             signal,
             tools,
             promptExtra: extra,
             maxTurns: PLAN_MAX_TURNS,
           })
-        : await agentLoop(this.session!, this.ctx, this.registry, this.cbs(io), {
+        : await agentLoop(this.session!, this.runCtx(), this.registry, this.cbs(io), {
             signal,
             tools,
             promptExtra: extra,
@@ -209,7 +214,7 @@ export class ChatManager {
 
   /** 单轮改写（无工具）：把整段计划规范成 4-6 个编号步骤；步数落在 [MIN,MAX] 才采用，否则保留原文。 */
   private async rewriteSteps(io: ChatIO, signal: AbortSignal, plan: string): Promise<string | undefined> {
-    const out = await agentLoop(this.session!, this.ctx, this.registry, this.cbs(io), {
+    const out = await agentLoop(this.session!, this.runCtx(), this.registry, this.cbs(io), {
       signal,
       tools: [],
       promptExtra: stepRewritePrompt(plan),

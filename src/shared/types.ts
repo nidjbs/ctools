@@ -69,9 +69,47 @@ export interface SavedMeta {
   paramHint: string
 }
 
+/** 记忆条目元数据（无正文，可经 IPC）。 */
+export interface MemoryMeta {
+  id: string
+  title: string
+  gist: string
+  kind?: 'fact' | 'preference' | 'procedure'
+  tags?: string[]
+  pinned?: boolean
+  ts: string
+  source?: string
+}
+
+/** 召回命中：元数据 + 正文。 */
+export interface MemoryHit extends MemoryMeta {
+  text: string
+}
+
 /** 命令执行环境：一切依赖显式注入，命令自身不做硬编码。 */
 export interface Ctx {
   config: AppConfig
+  /** 当前活动会话 id（memory 溯源审计用）；无会话时为 undefined。 */
+  sessionId?: string
+  /** 大工具结果外置目录（读白名单之一，写仍限 file_roots）。见 specs/context.md。 */
+  spillDir?: string
+  /** Main 装配的长期记忆（agent 工具 + 每轮 system 注入）。见 specs/memory.md。 */
+  memory?: {
+    /** 索引页全文（MEMORY.md）；空库返回 ''。 */
+    index(): string
+    /** pinned 条目正文拼接（上限内，按 ts 新近）；无则 ''。 */
+    pinnedText(): string
+    /** 本地关键词召回（索引打分 → 命中取正文）。 */
+    recall(query: string, k?: number): MemoryHit[]
+    /** 写入一条记忆（含索引页重写）。 */
+    add(input: { text: string; title?: string; kind?: MemoryMeta['kind']; tags?: string[] }): MemoryMeta
+    /** 软删（tombstone）；不存在幂等。 */
+    forget(id: string): void
+    /** 切换 pinned（正文常驻注入）；不存在幂等。 */
+    setPinned(id: string, pinned: boolean): void
+    /** 全部活动记忆（Settings / Launcher 用），按 ts 降序。 */
+    list(): MemoryMeta[]
+  }
   /** Main 装配的剪贴板历史（clipboard 命令用）。 */
   clipboard?: {
     recent(n: number): Promise<ClipItem[]>
@@ -111,6 +149,10 @@ export interface AppConfig {
   webSearchEnabled?: boolean
   /** bash 联网开关（默认关：bash 经 sandbox-exec 强制禁网；开=放行联网，执行仍每次人工确认）。 */
   bashNetwork?: boolean
+  /** 每轮 system 注入当天日期（前缀缓存仅跨天失效一次；默认开）。见 specs/system-prompt.md。 */
+  injectDate?: boolean
+  /** 上下文 token 上限（按所连模型的窗口设；默认 24000）。见 specs/context.md。 */
+  contextTokens?: number
   enabledCommands: Record<string, boolean>
 }
 
@@ -126,6 +168,7 @@ export type SessionEventType =
   | 'tool.result'
   | 'agent.error'
   | 'context.compact'
+  | 'context.summary'
   | 'plan.propose'
   | 'plan.approved'
   | 'plan.rejected'
@@ -224,6 +267,12 @@ export interface CtoolsApi {
     save(draft: DraftMeta): Promise<SavedMeta>
     /** 删除沉淀模板（按 id/slug；不存在幂等）。 */
     remove(id: string): Promise<void>
+  }
+  /** 长期记忆审阅（Settings）：列表 / 软删 / 切换常驻。见 specs/memory.md。 */
+  memory: {
+    list(): Promise<MemoryMeta[]>
+    remove(id: string): Promise<void>
+    pin(id: string, pinned: boolean): Promise<void>
   }
   /** 工具需人工批准（bash/破坏性写删）。 */
   onToolConfirm(cb: (req: { id: number; tool: string; message: string }) => void): () => void
