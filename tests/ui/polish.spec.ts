@@ -80,19 +80,36 @@ test('首启目录引导：file_roots 为空 → 引导条出现；选目录后�
   }
 })
 
-test('首启连接引导：gateway 不可达 → 空态显示引导条，点开设置', async () => {
-  const l = await launchApp({ down: true })
+test('首启引导：零上游 → 明确说「尚未配置模型上游」并直达设置', async () => {
+  const l = await launchApp({ down: true }) // 夹具的 gw 源为空 → 零上游
   try {
     // 精确到网关那条：file_roots 为空时目录引导条会同时出现（`.gw-banner.roots`）
+    const gwBanner = l.launcher.locator('.gw-banner:not(.roots)')
+    await expect(gwBanner).toBeVisible({ timeout: 15_000 })
+    await expect(gwBanner).toContainText('尚未配置模型上游')
+    const sw = l.app.waitForEvent('window')
+    await gwBanner.locator('button', { hasText: '去配置上游' }).click()
+    await expect((await sw).locator('.settings h1')).toContainText('设置')
+  } finally {
+    await l.cleanup()
+  }
+})
+
+test('首启引导：已配上游但网关不可达 → 提示未连接并开设置', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ctools-gwdown-'))
+  const src = join(dir, 'gw-src.yaml')
+  writeFileSync(src, 'providers:\n  ds:\n    type: openai\n    base_url: https://api.deepseek.com\naliases:\n  chat:\n    provider: ds\n    model: m\n')
+  const l = await launchApp({ down: true, gwConfig: src })
+  try {
     const gwBanner = l.launcher.locator('.gw-banner:not(.roots)')
     await expect(gwBanner).toBeVisible({ timeout: 15_000 })
     await expect(gwBanner).toContainText('模型网关未连接')
     const sw = l.app.waitForEvent('window')
     await gwBanner.locator('button', { hasText: '打开设置' }).click()
-    const settings = await sw
-    await expect(settings.locator('.settings h1')).toContainText('设置')
+    await expect((await sw).locator('.settings h1')).toContainText('设置')
   } finally {
     await l.cleanup()
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 
@@ -402,19 +419,36 @@ test('设置：模型分配区（默认 + 各场景）；连接区默认折叠�
   }
 })
 
-test('网关配置：读取 ~/gw.yaml 的 providers/aliases，编辑后写回并保留其余键', async () => {
+test('网关配置：首启迁移既有 gw 配置 → 编辑 → 写回 cTools 自持文件（其它键保留）', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ctools-gwui-'))
-  const gwFile = join(dir, 'gw.yaml')
+  const srcGw = join(dir, 'user-gw.yaml') // 模拟用户既有的 gw 配置
   writeFileSync(
-    gwFile,
-    ['listen: 127.0.0.1:8080', 'auth:', '  mode: none', 'providers:', '  ds:', '    type: openai', '    base_url: https://api.deepseek.com', 'aliases:', '  common:', '    provider: ds', '    model: deepseek-v4-flash', ''].join('\n'),
+    srcGw,
+    [
+      'listen: 127.0.0.1:8080',
+      'auth:',
+      '  mode: none',
+      'providers:',
+      '  ds:',
+      '    type: openai',
+      '    base_url: https://api.deepseek.com',
+      'aliases:',
+      '  common:',
+      '    provider: ds',
+      '    model: deepseek-v4-flash',
+      '',
+    ].join('\n'),
   )
-  const l = await launchApp({ gwConfig: gwFile })
+  const l = await launchApp({ gwConfig: srcGw })
   try {
+    // cTools 自持的配置文件（不是 gw 的那份）
+    const managed = join(l.userData, 'gateway.yaml')
+    expect(existsSync(managed)).toBe(true)
+
     const settings = await openSettings(l)
     const section = settings.locator('section', { has: settings.locator('h2', { hasText: '网关配置' }) })
-    await expect(section).toContainText(gwFile)
-    // 读到了现有的上游与别名（input 的 value 不计入 textContent，须断言 value）
+    await expect(section).toContainText(managed)
+    // 迁移过来的上游与别名可见（input 的 value 不计入 textContent，须断言 value）
     await expect(section.locator('.gw-list').first().locator('li').first().locator('input').nth(2)).toHaveValue(
       'https://api.deepseek.com',
     )
@@ -436,14 +470,14 @@ test('网关配置：读取 ~/gw.yaml 的 providers/aliases，编辑后写回并
     await section.locator('button', { hasText: '保存并热更' }).click()
     await expect(section.locator('.notice')).toBeVisible({ timeout: 15_000 })
 
-    // 磁盘上：新内容写入，且 listen/auth 等未被本功能管理的键原样保留
-    const doc = (await import('js-yaml')).load(readFileSync(gwFile, 'utf-8')) as Record<string, unknown>
-    expect(doc.listen).toBe('127.0.0.1:8080')
+    // 写进了 cTools 自持文件；未被本功能管理的键（auth）保留；admin 块由 cTools 注入
+    const doc = (await import('js-yaml')).load(readFileSync(managed, 'utf-8')) as Record<string, any>
     expect(doc.auth).toEqual({ mode: 'none' })
     expect(Object.keys(doc.providers as object).sort()).toEqual(['ds', 'ollama'])
-    expect((doc.aliases as Record<string, { model: string }>).trans.model).toBe('hy-mt1.5')
+    expect(doc.aliases.trans.model).toBe('hy-mt1.5')
+    expect(doc.admin.enabled).toBe(true)
     // 有备份
-    expect(readdirSync(dir).some((f) => f.includes('.bak-'))).toBe(true)
+    expect(readdirSync(l.userData).some((f) => f.includes('.bak-'))).toBe(true)
   } finally {
     await l.cleanup()
     rmSync(dir, { recursive: true, force: true })

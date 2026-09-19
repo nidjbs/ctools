@@ -1,8 +1,11 @@
-// Gateway 生命周期：探测 / gw up 拉起 / down / reload / restart（依赖注入，不发真实子进程）。
-import { describe, expect, it } from 'vitest'
-import { homedir } from 'node:os'
+// Gateway 生命周期（specs/gateway-config.md）：直接 spawn 内嵌 gateway，不再经 gw CLI。
+// 依赖注入（spawn/kill/probe/post），不发真实子进程。
+import { describe, expect, it, beforeEach, afterAll } from 'vitest'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { GatewayManager, ExecResult } from '../src/main/gatewayManager'
+import { GatewayManager, type GatewayRuntime } from '../src/main/gatewayManager'
+import { ADMIN_TOKEN_ENV } from '../src/main/gatewayHome'
 import type { AppConfig } from '../src/shared/types'
 
 const cfg: AppConfig = {
@@ -16,66 +19,105 @@ const cfg: AppConfig = {
   enabledCommands: {},
 }
 
-function makeMgr(opts: {
-  upOk?: boolean
-  exec?: (f: string, a: string[]) => Promise<ExecResult>
-  calls?: string[][]
-  postCalls?: Array<{ url: string; token: string }>
-}) {
-  const calls = opts.calls ?? []
-  const postCalls = opts.postCalls ?? []
+let dir: string
+let bin: string
+let rt: GatewayRuntime
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'ctools-gwmgr-'))
+  bin = join(dir, 'gateway')
+  writeFileSync(bin, '#!/bin/sh\n', { mode: 0o755 })
+  rt = { bin, cfgFile: join(dir, 'gateway.yaml'), adminToken: 'tok-1' }
+  // gateway 硬要求至少一个上游；夹具给一个，否则会在前置守卫处短路
+  writeFileSync(rt.cfgFile, 'providers:\n  ds:\n    type: openai\n    base_url: http://x\naliases: {}\n')
+})
+afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+function makeMgr(opts: { ready?: boolean; spawnThrows?: boolean } = {}) {
+  const spawned: Array<{ bin: string; args: string[]; env: NodeJS.ProcessEnv }> = []
+  const killed: number[] = []
+  const postCalls: Array<{ url: string; token: string }> = []
   let running = false
-  const exec =
-    opts.exec ??
-    (async (f, a) => {
-      calls.push(a)
-      if (a[0] === 'up') running = opts.upOk ?? true
-      return { code: a[0] === 'up' && !(opts.upOk ?? true) ? 1 : 0, out: '', err: '' }
-    })
-  const probe = async () => running
-  const post = async (url: string, token: string) => {
-    postCalls.push({ url, token })
-    return url.includes('fail') ? { ok: false, body: 'boom' } : { ok: true, body: '{"status":"reloaded"}' }
-  }
-  return { mgr: new GatewayManager(cfg, '/tmp/state', { exec, probe, post }), calls, postCalls }
+  const mgr = new GatewayManager(cfg, dir, rt, {
+    spawn: (b, args, env) => {
+      if (opts.spawnThrows) throw new Error('EACCES')
+      spawned.push({ bin: b, args, env })
+      running = opts.ready ?? true
+      return { pid: 4242 }
+    },
+    kill: (pid) => {
+      killed.push(pid)
+      running = false
+    },
+    probe: async () => running,
+    post: async (url, token) => {
+      postCalls.push({ url, token })
+      return url.includes('fail') ? { ok: false, body: 'boom' } : { ok: true, body: '{"status":"reloaded"}' }
+    },
+    readyTimeoutMs: 300,
+  })
+  return { mgr, spawned, killed, postCalls }
 }
 
 describe('GatewayManager', () => {
   it('status 反映 readyz 探测', async () => {
+    expect(await makeMgr().mgr.status()).toBe('stopped')
+  })
+
+  it('ensureStarted：已在运行则不 spawn', async () => {
+    const { mgr, spawned } = makeMgr({})
+    await mgr.ensureStarted() // 首次拉起
+    spawned.length = 0
+    expect(await mgr.ensureStarted()).toBe('running')
+    expect(spawned).toEqual([])
+  })
+
+  it('ensureStarted：spawn 内嵌二进制 -config <自持配置>，token 只经环境变量', async () => {
+    const { mgr, spawned } = makeMgr({})
+    expect(await mgr.ensureStarted()).toBe('running')
+    expect(spawned).toHaveLength(1)
+    expect(spawned[0].bin).toBe(bin)
+    expect(spawned[0].args).toEqual(['-config', rt.cfgFile])
+    expect(spawned[0].env[ADMIN_TOKEN_ENV]).toBe('tok-1')
+  })
+
+  it('pid 落盘，供后续 down 使用', async () => {
     const { mgr } = makeMgr({})
-    expect(await mgr.status()).toBe('stopped')
+    await mgr.ensureStarted()
+    expect(readFileSync(join(dir, 'gateway.pid'), 'utf-8')).toBe('4242')
   })
 
-  it('ensureStarted：running 时不调 gw', async () => {
-    const calls: string[][] = []
-    const exec = async (f: string, a: string[]) => {
-      calls.push(a)
-      return { code: 0, out: '', err: '' }
-    }
-    const probe = async () => true
-    const mgr = new GatewayManager(cfg, '/tmp', { exec, probe, post: async () => ({ ok: true, body: '' }) })
-    expect(await mgr.ensureStarted()).toBe('running')
-    expect(calls).toEqual([])
-  })
-
-  it('ensureStarted：stopped 时执行 `gw up <config>` 并等待 ready', async () => {
-    const { mgr, calls } = makeMgr({})
-    expect(await mgr.ensureStarted()).toBe('running')
-    expect(calls).toHaveLength(1)
-    expect(calls[0][0]).toBe('up')
-    expect(calls[0][1]).toBe(join(homedir(), 'gw.yaml'))
-  })
-
-  it('ensureStarted：gw up 失败 → stopped + lastError', async () => {
-    const { mgr } = makeMgr({ upOk: false })
+  it('二进制缺失 → stopped + 可读原因（不抛）', async () => {
+    const { mgr } = makeMgr({})
+    rmSync(bin)
     expect(await mgr.ensureStarted()).toBe('stopped')
-    expect(mgr.lastError()).toContain('gw up')
+    expect(mgr.lastError()).toContain('未找到 gateway 二进制')
   })
 
-  it('down 执行 `gw down`', async () => {
-    const { mgr, calls } = makeMgr({})
+  it('spawn 抛错 → stopped + 记录原因', async () => {
+    const { mgr } = makeMgr({ spawnThrows: true })
+    expect(await mgr.ensureStarted()).toBe('stopped')
+    expect(mgr.lastError()).toContain('启动 gateway 失败')
+  })
+
+  it('启动后未在超时内就绪 → stopped + 记录原因', async () => {
+    const { mgr } = makeMgr({ ready: false })
+    expect(await mgr.ensureStarted()).toBe('stopped')
+    expect(mgr.lastError()).toContain('未在超时内就绪')
+  })
+
+  it('down：按记录的 pid 结束进程并清理 pid 文件', async () => {
+    const { mgr, killed } = makeMgr({})
+    await mgr.ensureStarted()
     await mgr.down()
-    expect(calls.at(-1)?.[0]).toBe('down')
+    expect(killed).toEqual([4242])
+    expect(existsSync(join(dir, 'gateway.pid'))).toBe(false)
+  })
+
+  it('down：未运行过也安全（无 pid 文件）', async () => {
+    const { mgr, killed } = makeMgr({})
+    await mgr.down()
+    expect(killed).toEqual([])
   })
 
   it('reload：POST {adminUrl}/admin/reload + Bearer token', async () => {
@@ -87,19 +129,36 @@ describe('GatewayManager', () => {
   })
 
   it('reload 失败返回 error 并记录 lastError', async () => {
-    const mgr = new GatewayManager(cfg, '/tmp', {
-      exec: async () => ({ code: 0, out: '', err: '' }),
+    const mgr = new GatewayManager(cfg, dir, { ...rt, adminToken: 'x' }, {
+      spawn: () => ({ pid: 1 }),
+      kill: () => {},
       probe: async () => false,
       post: async () => ({ ok: false, body: 'unauthorized' }),
+      readyTimeoutMs: 100,
     })
-    const rr = await mgr.reload()
-    expect(rr).toEqual({ ok: false, error: 'unauthorized' })
+    expect(await mgr.reload()).toEqual({ ok: false, error: 'unauthorized' })
     expect(mgr.lastError()).toBe('unauthorized')
   })
 
-  it('restart = down 后 ensureStarted(up)', async () => {
-    const { mgr, calls } = makeMgr({})
+  it('restart = down（杀旧 pid）后重新 spawn', async () => {
+    const { mgr, killed, spawned } = makeMgr({})
+    await mgr.ensureStarted()
+    spawned.length = 0
     await mgr.restart()
-    expect(calls.map((c) => c[0])).toEqual(['down', 'up'])
+    expect(killed).toEqual([4242])
+    expect(spawned).toHaveLength(1)
+  })
+
+  it('gwConfigFile 指向 cTools 自持的配置（配置编辑区用它）', () => {
+    expect(makeMgr().mgr.gwConfigFile()).toBe(rt.cfgFile)
+  })
+
+  it('零上游 → 不 spawn，给出可操作原因（gateway 硬要求至少一个 provider）', async () => {
+    writeFileSync(rt.cfgFile, 'providers: {}\naliases: {}\n')
+    const { mgr, spawned } = makeMgr({})
+    expect(await mgr.ensureStarted()).toBe('stopped')
+    expect(spawned).toEqual([]) // 提前拦住，不去等超时
+    expect(mgr.lastError()).toContain('尚未配置模型上游')
+    expect(mgr.lastError()).toContain('设置')
   })
 })

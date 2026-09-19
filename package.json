@@ -31,6 +31,12 @@
       "out/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/gateway",
+        "to": "gateway"
+      }
+    ],
     "asar": true,
     "electronDownload": {
       "mirror": "https://npmmirror.com/mirrors/electron/"

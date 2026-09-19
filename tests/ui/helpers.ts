@@ -152,8 +152,11 @@ export async function launchApp(opts: LaunchOpts = {}): Promise<Launched> {
   delete env.ELECTRON_RENDERER_URL // 走 out/ 构建产物，不接 dev server
   if (pickDir === undefined) delete env.CTOOLS_PICK_DIR
   else env.CTOOLS_PICK_DIR = pickDir
-  if (gwConfig === undefined) delete env.GW_GATEWAY_CONFIG
-  else env.GW_GATEWAY_CONFIG = gwConfig
+  // 始终把迁移来源指向临时文件：否则 cTools 首启会去读**开发者真实的 ~/gw.yaml**，
+  // 既污染测试隔离，也让结果依赖本机配置。
+  const gwSrc = gwConfig ?? join(userData, 'gw-src.yaml')
+  if (gwConfig === undefined) writeFileSync(gwSrc, 'providers: {}\naliases: {}\n')
+  env.GW_GATEWAY_CONFIG = gwSrc
 
   const app = await _electron.launch({ args: [ROOT], cwd: ROOT, env })
   const launcher = await app.firstWindow()

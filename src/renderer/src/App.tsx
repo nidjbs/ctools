@@ -159,6 +159,7 @@ export default function App() {
   const [recents, setRecents] = useState<SessionSummary[]>([]) // 最近会话
   const [gwDown, setGwDown] = useState(false) // 网关未连接 → 引导条（本次运行可关）
   const [noRoots, setNoRoots] = useState(false) // file_roots 为空 → 首启目录引导条
+  const [noProviders, setNoProviders] = useState(false) // 网关零上游 → 起不来，需具体指引
   const [rootsBannerHidden, setRootsBannerHidden] = useState(false)
   const [bannerHidden, setBannerHidden] = useState(false)
   const [delArm, setDelArm] = useState<{ id: string } | null>(null) // ⭐ 模板待确认删除
@@ -191,6 +192,11 @@ export default function App() {
         .status()
         .then((s) => setGwDown(s === 'stopped'))
         .catch(() => setGwDown(true))
+      // 网关起不来的常见原因是「一个上游都没配」——那种情况下给具体指引，而不是笼统说未连接
+      window.api.gateway
+        .config()
+        .then((c) => setNoProviders(Object.keys(c.providers).length === 0))
+        .catch(() => {})
       window.api.config
         .get()
         .then((c) => setNoRoots(c.fileRoots.filter(Boolean).length === 0))
@@ -422,9 +428,13 @@ export default function App() {
       )}
       {gwDown && !bannerHidden && !input.trim() && (
         <div className="gw-banner">
-          <span>模型网关未连接，命令/对话暂不可用</span>
+          <span>
+            {noProviders
+              ? '尚未配置模型上游，网关无法启动'
+              : '模型网关未连接，命令/对话暂不可用'}
+          </span>
           <button className="btn" onClick={() => void window.api.window.openSettings()}>
-            打开设置
+            {noProviders ? '去配置上游' : '打开设置'}
           </button>
           <span className="gw-close" role="button" title="关闭" onClick={() => setBannerHidden(true)}>
             ✕

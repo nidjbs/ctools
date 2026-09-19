@@ -5,10 +5,21 @@
 cTools 一直只保存网关的 URL/token，**从不读写网关自己的配置**；用户要加一个上游、加一个模型别名，只能手编 YAML。
 本能力把 `providers` 与 `aliases` 变成 Settings 里的**结构化表单**，改完直接热更。
 
-## 配置文件
+## 归属：cTools 自己管 gateway
 
-- 路径：`GW_GATEWAY_CONFIG` 环境变量优先，缺省 `~/gw.yaml`（与 `gw up <config.yaml>` / `gw reload` 同源）。
-- 结构（实测用户配置）：
+- **内嵌 gateway 二进制**：打包后位于 `Contents/Resources/gateway/<平台>-<架构>/gateway`；开发态取仓库 `resources/`；`GW_GATEWAY_BIN` 可覆盖。**不再依赖外部 `gw` CLI**（原先只用它 `up`/`down`，现在 cTools 直接 spawn）。
+- **配置文件由 cTools 自持**：`<userData>/gateway.yaml`。**不再读写 gw 的 `~/.config/gw/gateway.yaml` 或 `~/gw.yaml`。**
+  - **首启迁移**：该文件不存在时，按 `GW_GATEWAY_CONFIG` → `~/gw.yaml` → `~/.config/gw/gateway.yaml` 顺序找第一个可解析的，**迁移其 providers/aliases**（不丢用户已有模型）；都找不到则写空模板（**不编造上游**）。
+  - 迁移/初始化时由 cTools 覆盖 `listen` / `healthz`（与客户端连接的地址保持一致）、`providers` / `aliases` 兜底为空、并**覆盖 `admin` 块**为 `{ enabled: true, token_env: CTOOLS_GATEWAY_ADMIN_TOKEN }`。
+  - `admin` token 只经**环境变量**传给子进程，配置文件里只出现变量名；token 值由 cTools 生成并存在自己的 `config.json`。
+  - 迁移后 `~/gw.yaml` 原文件**不动**（cTools 只是复制内容）。
+- **进程**：`gateway -config <userData>/gateway.yaml`；pid 落 `<userData>/gateway.pid` 供 `down` 使用。
+  - **子进程输出重定向到 `<userData>/gateway.log`**（不用 `stdio:'ignore'`）——gateway 启动失败只会打在自己的 stderr 上，丢弃后外部只剩「未就绪」这种无法自查的现象（实测踩过）。
+  - **零上游不启动**：gateway 硬要求至少一个 provider（否则报 `at least one provider is required` 并退出）。
+    cTools 在 spawn **之前**检查，直接给出可操作原因（「尚未配置模型上游，请在设置 → 网关配置里添加」），不去白等超时。
+  - 因此**首次运行不会凭空可用**：需要用户配置一个上游（或其既有 gw 配置被迁移过来）。Launcher 此时显示「尚未配置模型上游，网关无法启动 → 去配置上游」。
+
+### 配置结构（实测）
 
 ```yaml
 listen: 127.0.0.1:8080        # 这些**不归本功能管**，原样保留
@@ -41,8 +52,8 @@ aliases:                      # 映射：别名 → { provider, model }
 5. **已知代价**：YAML 往返会**丢失原文件注释**（实测用户配置里有说明性注释）。首次保存前的备份可用于追回。
 
 ### 应用
-- `保存并热更` → `gw reload`（POST `{adminUrl}/admin/reload`）。
-- `保存并重启` → down + `gw up`（配置不可热更或状态异常时用）。
+- `保存并热更` → POST `{adminUrl}/admin/reload`（Bearer cTools 自己的 admin token）。
+- `保存并重启` → 结束记录的 pid + 重新 spawn（配置不可热更或状态异常时用）。
 - 应用失败 → 返回原因；**配置已落盘**这一点必须在 UI 明示（避免用户以为没生效就是没保存）。
 
 ## 安全约束

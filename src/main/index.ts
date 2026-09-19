@@ -19,9 +19,11 @@ import { ChatManager, ChatIO } from './chat'
 import { ClipboardStore, startClipboardWatch } from './clipboard'
 import { listSaves, saveCommand, removeSave, distillDraft, type DraftMeta } from './saves'
 import { readGwFile, writeGwFile } from './gwFile'
+import { ensureGatewayConfig } from './gatewayHome'
+import { randomUUID } from 'node:crypto'
 import { listSessions } from './session'
 import { realInside } from './pathGuard'
-import { bootstrapFromGw, reconcileDefaultAlias } from './gwConfig'
+import { reconcileDefaultAlias } from './gwConfig'
 import type {
   AgentMode,
   AppConfig,
@@ -237,8 +239,33 @@ function bindHotkey(key: string) {
 app.whenReady().then(async () => {
   const userData = app.getPath('userData')
   const { registry, ctx } = createApp(userData)
-  bootstrapFromGw(userData, ctx.config, (c) => saveConfig(userData, c))
-  const gateway = new GatewayManager(ctx.config, userData)
+  // 不再从 gw CLI 的 ~/.config/gw/config.yaml 引导：cTools 自持 gateway 配置与地址（见下方 ensureGatewayConfig）
+  // 内嵌的 gateway 二进制：打包后位于 Contents/Resources/gateway/<平台>-<架构>/gateway；
+  // 开发态取仓库 resources/。GW_GATEWAY_BIN 可覆盖（测试/自定义构建）。
+  const gatewayBin =
+    process.env['GW_GATEWAY_BIN'] ||
+    join(
+      app.isPackaged ? process.resourcesPath : join(app.getAppPath(), 'resources'),
+      'gateway',
+      `${process.platform}-${process.arch}`,
+      'gateway',
+    )
+  // admin token：cTools 自己生成并持久化（只经环境变量传给子进程，不写进配置文件）
+  if (!ctx.config.adminToken) {
+    ctx.config.adminToken = randomUUID().replace(/-/g, '')
+    saveConfig(userData, ctx.config)
+  }
+  // cTools 自持 gateway 配置：首启从用户既有 gw 配置迁移，否则写空模板（specs/gateway-config.md）
+  const gwHome = ensureGatewayConfig(userData, {
+    listen: ctx.config.gatewayUrl.replace(/^\w+:\/\//, ''),
+    healthz: ctx.config.adminUrl.replace(/^\w+:\/\//, ''),
+  })
+  if (gwHome.error) console.warn('[gateway] 配置初始化失败:', gwHome.error)
+  const gateway = new GatewayManager(ctx.config, userData, {
+    bin: gatewayBin,
+    cfgFile: gwHome.path,
+    adminToken: ctx.config.adminToken,
+  })
   const usage = new UsageStore(userData)
   const sessionsDir = join(userData, 'sessions')
   const chat = new ChatManager(ctx, registry, sessionsDir)
