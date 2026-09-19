@@ -1,0 +1,64 @@
+name: CI
+
+# 触发覆盖 master 与 main —— 远端两个分支都存在（默认分支为 main，实际开发在 master）。
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# 同一 ref 的新推送取消旧运行，避免排队堆积。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 快、便宜：静态检查 + 单测（含黄金集）+ 构建。
+  # 黄金集属于 `npm run test` 的一部分，这里再单跑一次只为在 CI 日志里独立成段，便于定位。
+  verify:
+    name: 静态检查 / 单测 · 黄金集 / 构建
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: typecheck
+        run: npm run typecheck
+      - name: 单测 + 运行时 e2e
+        run: npm run test -- --reporter=default
+      - name: 黄金集（模型实际收到的请求）
+        run: npm run test:golden
+      - name: 构建 out/
+        run: npm run build
+
+  # UI e2e 驱动真实 Electron，且应用依赖 macOS 专有能力（pbcopy / mdfind / sandbox-exec），
+  # 因此只能在 macOS runner 上跑（成本约为 Linux runner 的 10 倍）。
+  # 只在 PR 与 master 推送时执行，避免每个分支都烧 macos 额度。
+  ui-e2e:
+    name: UI e2e（真实 Electron）
+    runs-on: macos-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Playwright 用本地 Electron 启动（`_electron.launch`），无需下载浏览器。
+      - name: 构建 + 运行 UI e2e
+        run: npm run test:ui
+      - name: 失败时上传报告与截图
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
