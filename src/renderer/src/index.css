@@ -833,6 +833,14 @@ body {
   cursor: pointer;
   font-size: 12px;
 }
+.gw-banner.roots {
+  background: #2a2540;
+  color: #b9a9ff;
+}
+.gw-banner.roots .btn {
+  background: #5b46c8;
+  color: #fff;
+}
 .gw-close {
   margin-left: auto;
   cursor: pointer;

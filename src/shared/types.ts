@@ -227,6 +227,8 @@ export interface CtoolsApi {
     openSettings(): Promise<void>
     /** 关闭当前窗口（收起界面，进程保留）。 */
     close(): Promise<void>
+    /** 原生目录选择器（首启配置 file_roots）；取消返回 null。见 specs/ux-polish.md §10。 */
+    pickDirectory(): Promise<string | null>
   }
   system: {
     pbcopy(text: string): Promise<boolean>

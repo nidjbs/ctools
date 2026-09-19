@@ -12,7 +12,8 @@
 - Agent 路径：分发层遇到 confirm → 调 `onConfirm(tool,message)`（Chat 内弹 批准/拒绝）；
   - 批准 → 以 `confirmApproved` 重放执行；
   - 拒绝/超时 → 工具结果为 `用户未批准：…`，不执行。
-- cwd = `file_roots[0]`（未配置则用户 home）。
+- cwd = `file_roots[0]`；**`file_roots` 为空 → 拒绝执行**，返回可操作提示（指引去设置里选目录）。
+  - 不再回退到 `homedir()`：否则会出现「file 工具全被拒、bash 却能在整个家目录跑」的自相矛盾状态。文件类能力统一以 `file_roots` 为界。
 - **网络沙箱（2026-09 起）**：默认 `bashNetwork=false` → 命令经 `sandbox-exec` 套 Seatbelt `(deny network*)` 执行，**OS 级禁网**（`src/main/shellSandbox.ts`）。`bashNetwork=true`（Settings 开关）→ 放行联网（普通 `/bin/sh -c`）。
 - 禁网但 `sandbox-exec` 不可用/应用失败 → **拒绝执行**并给明确错误（提示开启「bash 联网」），绝不静默降级成无沙箱执行。
 - 超时 30s，超时即 kill；非交互（无 tty）。

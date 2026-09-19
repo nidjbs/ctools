@@ -55,3 +55,27 @@ describe('bash 确认门', () => {
     expect(ids).toContain('bash')
   })
 })
+
+describe('cwd 与 file_roots 一致（specs/bash.md）', () => {
+  it('cwd = file_roots[0]', async () => {
+    const r = await bashCmd.run('pwd', { ...ctx, confirmApproved: true })
+    expect(r.type).toBe('text')
+    if (r.type === 'text') expect(r.text).toContain(root)
+  })
+
+  it('file_roots 为空 → 拒绝执行并给可操作提示（不回退 homedir）', async () => {
+    const empty: Ctx = { ...ctx, config: { ...ctx.config, fileRoots: [] } }
+    const r = await bashCmd.run('pwd', { ...empty, confirmApproved: true })
+    expect(r.type).toBe('text')
+    if (r.type === 'text') {
+      expect(r.text).toContain('未配置可访问目录')
+      expect(r.text).toContain('设置')
+    }
+  })
+
+  it('未配置目录时在确认闸门之前就拒绝（不先要批准再失败）', async () => {
+    const empty: Ctx = { ...ctx, config: { ...ctx.config, fileRoots: [] } }
+    const r = await bashCmd.run('rm -rf /', empty) // 不带 confirmApproved
+    expect(r.type).toBe('text') // 而非 confirm
+  })
+})

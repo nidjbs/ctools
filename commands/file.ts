@@ -70,7 +70,14 @@ function pathOf(input: unknown): string {
 }
 
 function denied(roots: string[]): { type: 'text'; text: string } {
-  return { type: 'text', text: `拒绝：路径不在 file_roots 内（${roots.join(', ') || '未配置'}）` }
+  if (!roots.length) {
+    // 空态要可操作：不只是"拒绝"，而是告诉用户怎么修
+    return {
+      type: 'text',
+      text: '未配置可访问目录（file_roots），文件工具不可用。请在设置里选择目录（Launcher 首页也有引导）。',
+    }
+  }
+  return { type: 'text', text: `拒绝：路径不在 file_roots 内（${roots.join(', ')}）` }
 }
 
 /** 读白名单 = file_roots ∪ spill 目录（大结果外置后可回取）；**写仍限 file_roots**。 */

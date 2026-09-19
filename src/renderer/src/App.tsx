@@ -158,6 +158,8 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null) // 复制反馈
   const [recents, setRecents] = useState<SessionSummary[]>([]) // 最近会话
   const [gwDown, setGwDown] = useState(false) // 网关未连接 → 引导条（本次运行可关）
+  const [noRoots, setNoRoots] = useState(false) // file_roots 为空 → 首启目录引导条
+  const [rootsBannerHidden, setRootsBannerHidden] = useState(false)
   const [bannerHidden, setBannerHidden] = useState(false)
   const [delArm, setDelArm] = useState<{ id: string } | null>(null) // ⭐ 模板待确认删除
   const inputRef = useRef<HTMLInputElement>(null)
@@ -189,6 +191,10 @@ export default function App() {
         .status()
         .then((s) => setGwDown(s === 'stopped'))
         .catch(() => setGwDown(true))
+      window.api.config
+        .get()
+        .then((c) => setNoRoots(c.fileRoots.filter(Boolean).length === 0))
+        .catch(() => {})
     }
     void load()
     const off = window.api.onLauncherShow(() => void load())
@@ -411,6 +417,25 @@ export default function App() {
             打开设置
           </button>
           <span className="gw-close" role="button" title="关闭" onClick={() => setBannerHidden(true)}>
+            ✕
+          </span>
+        </div>
+      )}
+      {noRoots && !rootsBannerHidden && !input.trim() && (
+        <div className="gw-banner roots">
+          <span>未配置可访问目录，文件功能不可用</span>
+          <button
+            className="btn"
+            onClick={() => {
+              void window.api.window.pickDirectory().then((p) => {
+                if (!p) return
+                void window.api.config.update({ fileRoots: [p] }).then(() => setNoRoots(false))
+              })
+            }}
+          >
+            选择目录
+          </button>
+          <span className="gw-close" role="button" title="关闭" onClick={() => setRootsBannerHidden(true)}>
             ✕
           </span>
         </div>

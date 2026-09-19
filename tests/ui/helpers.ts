@@ -119,6 +119,8 @@ export interface LaunchOpts {
   fileRoots?: string[]
   /** gateway 完全不可达（down）。 */
   down?: boolean
+  /** 打桩原生「选择目录」对话框的返回值（原生对话框无法在 e2e 里点击）。 */
+  pickDir?: string
 }
 
 export interface Launched {
@@ -129,7 +131,7 @@ export interface Launched {
 }
 
 export async function launchApp(opts: LaunchOpts = {}): Promise<Launched> {
-  const { behavior = {}, fileRoots = [], down = false } = opts
+  const { behavior = {}, fileRoots = [], down = false, pickDir } = opts
   let mock: Mock | null = null
   let base: string
   if (down) {
@@ -146,6 +148,8 @@ export async function launchApp(opts: LaunchOpts = {}): Promise<Launched> {
   env.CTOOLS_USER_DATA = userData
   delete env.GW_GATEWAY_BIN // 不自动拉起真实 gateway
   delete env.ELECTRON_RENDERER_URL // 走 out/ 构建产物，不接 dev server
+  if (pickDir === undefined) delete env.CTOOLS_PICK_DIR
+  else env.CTOOLS_PICK_DIR = pickDir
 
   const app = await _electron.launch({ args: [ROOT], cwd: ROOT, env })
   const launcher = await app.firstWindow()

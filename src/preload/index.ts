@@ -35,6 +35,7 @@ const api: CtoolsApi = {
     hide: handle('window:hide'),
     openSettings: handle('window:openSettings'),
     close: handle('window:close'),
+    pickDirectory: handle('window:pickDirectory'),
   },
   system: {
     pbcopy: handle('system:copy'),

@@ -46,13 +46,34 @@ test('复制反馈：text 结果有复制钮，点击出 toast；list 点击复�
   }
 })
 
+test('首启目录引导：file_roots 为空 → 引导条出现；选目录后写入配置', async () => {
+  const picked = mkdtempSync(join(tmpdir(), 'ctools-pick-'))
+  const l = await launchApp({ fileRoots: [], pickDir: picked })
+  try {
+    const banner = l.launcher.locator('.gw-banner.roots')
+    await expect(banner).toBeVisible({ timeout: 15_000 })
+    await expect(banner).toContainText('未配置可访问目录')
+
+    await banner.locator('button', { hasText: '选择目录' }).click()
+    await expect(banner).toHaveCount(0, { timeout: 10_000 })
+
+    const disk = JSON.parse(readFileSync(join(l.userData, 'config.json'), 'utf-8'))
+    expect(disk.fileRoots).toEqual([picked])
+  } finally {
+    await l.cleanup()
+    rmSync(picked, { recursive: true, force: true })
+  }
+})
+
 test('首启连接引导：gateway 不可达 → 空态显示引导条，点开设置', async () => {
   const l = await launchApp({ down: true })
   try {
-    await expect(l.launcher.locator('.gw-banner')).toBeVisible({ timeout: 15_000 })
-    await expect(l.launcher.locator('.gw-banner')).toContainText('模型网关未连接')
+    // 精确到网关那条：file_roots 为空时目录引导条会同时出现（`.gw-banner.roots`）
+    const gwBanner = l.launcher.locator('.gw-banner:not(.roots)')
+    await expect(gwBanner).toBeVisible({ timeout: 15_000 })
+    await expect(gwBanner).toContainText('模型网关未连接')
     const sw = l.app.waitForEvent('window')
-    await l.launcher.locator('.gw-banner').locator('button', { hasText: '打开设置' }).click()
+    await gwBanner.locator('button', { hasText: '打开设置' }).click()
     const settings = await sw
     await expect(settings.locator('.settings h1')).toContainText('设置')
   } finally {

@@ -1,5 +1,5 @@
 // Electron Main：窗口 + IPC。逻辑全在 runtime 模块；这里只装配。
-import { app, BrowserWindow, globalShortcut, ipcMain, clipboard as electronClipboard } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, clipboard as electronClipboard } from 'electron'
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { createApp } from './app'
@@ -293,6 +293,23 @@ app.whenReady().then(async () => {
   ipcMain.handle('window:hide', () => launcherWin?.hide())
   ipcMain.handle('window:openSettings', () => openSettingsWindow())
   ipcMain.handle('window:close', (e) => BrowserWindow.fromWebContents(e.sender)?.close())
+  // 首启目录引导：原生选目录（取消返回 null）。不静默放宽权限——目录由用户显式选择。
+  ipcMain.handle('window:pickDirectory', async (e) => {
+    // 测试隔离 seam：原生对话框无法在 e2e 里点击，用环境变量注入返回值（同 CTOOLS_USER_DATA 的做法）
+    const stub = process.env['CTOOLS_PICK_DIR']
+    if (stub !== undefined) return stub || null
+    const parent = BrowserWindow.fromWebContents(e.sender)
+    const opts = {
+      title: '选择 cTools 可访问的目录',
+      properties: ['openDirectory', 'createDirectory'] as const,
+      buttonLabel: '选择',
+    }
+    const r = parent
+      ? await dialog.showOpenDialog(parent, { ...opts, properties: [...opts.properties] })
+      : await dialog.showOpenDialog({ ...opts, properties: [...opts.properties] })
+    if (r.canceled || !r.filePaths.length) return null
+    return r.filePaths[0]
+  })
 
   // Chat 会话（进入即让 Launcher 退场，错误由 ChatManager 落 agent.error 事件）
   ipcMain.handle('session:open', async (_e, first?: string) => {
