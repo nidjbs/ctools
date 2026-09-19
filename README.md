@@ -86,7 +86,7 @@ npm run dev          # 本地开发运行（Electron）
 
 ### 设置窗
 
-输入 `settings` / `设置` 打开，管理：
+三个入口任选：**Launcher 空态列表末尾的「⚙️ 设置」行**、菜单栏 **cTools → 设置…（⌘,）**、或直接输入 `settings` / `设置` 回车。管理：
 
 - **Gateway**：连接状态、可用模型列表、热更新 `reload` / 重启 `restart`、「托管 gateway」（开启后 cTools 自动拉起并管理它，默认关）。
 - **命令**：列出全部命令，可单独启停，即时生效。

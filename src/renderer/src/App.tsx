@@ -13,7 +13,7 @@ declare global {
 /** 无命令命中时，这些词直接打开 Settings。 */
 const SETTINGS_KEYS = new Set(['settings', '设置', 'config', 'prefs'])
 
-type Item = { kind: 'cmd'; c: CommandMeta } | { kind: 'tpl'; t: Template }
+type Item = { kind: 'cmd'; c: CommandMeta } | { kind: 'tpl'; t: Template } | { kind: 'settings' }
 
 /** 模板参数：输入以 模板 id/标题 开头则剩余为参数；否则整段作为参数（agent 类）。 */
 function templateParam(t: Template, q: string): string {
@@ -230,7 +230,8 @@ export default function App() {
 
   const items: Item[] = (() => {
     const q = input.trim()
-    if (!q) return all.map((t) => ({ kind: 'tpl', t }))
+    // 空态末尾固定给一个「设置」入口 —— 否则只能靠记住输入 settings 才能打开（发现性问题）
+    if (!q) return [...all.map((t) => ({ kind: 'tpl', t }) as Item), { kind: 'settings' }]
     if (q.startsWith('#')) return tplCtx ? [{ kind: 'tpl', t: tplCtx }] : []
     if (cmd.length) return cmd.map((c) => ({ kind: 'cmd', c }))
     return found.map((t) => ({ kind: 'tpl', t }))
@@ -321,6 +322,15 @@ export default function App() {
       return
     }
     const picked = items[idx]
+    if (picked?.kind === 'settings') {
+      setInput('')
+      try {
+        await window.api.window.openSettings()
+      } catch (e) {
+        setResult({ type: 'text', text: `设置打开失败: ${(e as Error).message ?? e}` })
+      }
+      return
+    }
     if (picked?.kind === 'tpl') {
       const param = templateParam(picked.t, q)
       if (!param) {
@@ -482,7 +492,7 @@ export default function App() {
             <ul className="matches">
               {items.map((it, i) => (
                 <li
-                  key={it.kind === 'cmd' ? it.c.id : it.t.id}
+                  key={it.kind === 'cmd' ? it.c.id : it.kind === 'settings' ? 'settings' : it.t.id}
                   className={`${i === cursor ? 'sel' : ''}${it.kind === 'tpl' && it.t.emoji === '⭐' ? ' del' : ''}`}
                   onMouseMove={() => {
                     if (cursor !== i) setCursor(i)
@@ -490,7 +500,13 @@ export default function App() {
                   }}
                   onClick={() => void onEnter(i)}
                 >
-                  {it.kind === 'cmd' ? (
+                  {it.kind === 'settings' ? (
+                    <>
+                      <span className="m-id">⚙️</span>
+                      <span className="m-title">设置</span>
+                      <span className="t-sub">网关与模型 · 目录 · 热键 · 命令启停</span>
+                    </>
+                  ) : it.kind === 'cmd' ? (
                     <>
                       <span className="m-id">{it.c.id}</span>
                       <span className="m-title">{it.c.title}</span>

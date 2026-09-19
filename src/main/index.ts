@@ -1,5 +1,14 @@
 // Electron Main：窗口 + IPC。逻辑全在 runtime 模块；这里只装配。
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, clipboard as electronClipboard } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  clipboard as electronClipboard,
+  type MenuItemConstructorOptions,
+} from 'electron'
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { createApp } from './app'
@@ -410,6 +419,29 @@ app.whenReady().then(async () => {
   ipcMain.handle('tool:answer', (_e, id: number, text: string) => {
     pendingAsks.get(id)?.(String(text ?? '').trim())
   })
+
+  // 应用菜单：macOS 标准入口「设置…」(⌘,)。必须保留 editMenu —— 否则输入框的复制/粘贴会失效。
+  const menu: MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { label: '设置…', accelerator: 'CmdOrCtrl+,', click: () => openSettingsWindow() },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    { role: 'editMenu' },
+    { role: 'windowMenu' },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu))
 
   launcherWin = makeWindow('launcher')
   bindHotkey(ctx.config.hotkey)

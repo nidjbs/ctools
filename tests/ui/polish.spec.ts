@@ -46,6 +46,21 @@ test('复制反馈：text 结果有复制钮，点击出 toast；list 点击复�
   }
 })
 
+test('设置入口：空态列表末尾有「设置」行，点击即开设置窗', async () => {
+  const l = await launchApp({})
+  try {
+    const row = l.launcher.locator('.matches li', { hasText: '设置' }).last()
+    await expect(row).toBeVisible({ timeout: 10_000 })
+    await expect(row).toContainText('网关与模型')
+    const sw = l.app.waitForEvent('window')
+    await row.click()
+    const settings = await sw
+    await expect(settings.locator('.settings h1')).toContainText('设置', { timeout: 15_000 })
+  } finally {
+    await l.cleanup()
+  }
+})
+
 test('首启目录引导：file_roots 为空 → 引导条出现；选目录后写入配置', async () => {
   const picked = mkdtempSync(join(tmpdir(), 'ctools-pick-'))
   const l = await launchApp({ fileRoots: [], pickDir: picked })
