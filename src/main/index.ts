@@ -37,6 +37,23 @@ let chatWin: BrowserWindow | null = null
 let settingsWin: BrowserWindow | null = null
 let quitting = false
 app.on('before-quit', () => (quitting = true))
+/** Chat 管理器引用（whenReady 时装配），供窗口关闭时释放挂起的人工在环请求。 */
+let chatMgr: ChatManager | null = null
+
+/**
+ * Chat 窗口关闭 → 释放未决的人工在环请求并中止当前轮。
+ * 否则未决的 confirm/ask 会一直等到超时（120s/300s），期间 running 恒为 true：
+ * 既让 attach/newSession 撞上 running 守卫而失败，也让 agent 在无界面的情况下继续空转。
+ */
+function releaseChatBlockers(): void {
+  for (const resolve of pendingConfirms.values()) resolve(false)
+  pendingConfirms.clear()
+  currentConfirm = null
+  for (const resolve of pendingAsks.values()) resolve('（用户未回答）')
+  pendingAsks.clear()
+  currentAsk = null
+  chatMgr?.cancel()
+}
 
 function makeWindow(kind: WinKind): BrowserWindow {
   const m = WINMETA[kind]
@@ -77,8 +94,10 @@ function makeWindow(kind: WinKind): BrowserWindow {
       launcherWin = null
       return
     }
-    if (kind === 'chat') chatWin = null
-    else settingsWin = null
+    if (kind === 'chat') {
+      chatWin = null
+      releaseChatBlockers() // 关窗即释放：未决批准作废 + 中止当前轮（无界面时不应继续跑）
+    } else settingsWin = null
     if (!quitting) showLauncher() // 关闭对话/设置 → 回到 Launcher
   })
   return win
@@ -205,6 +224,7 @@ app.whenReady().then(async () => {
   const usage = new UsageStore(userData)
   const sessionsDir = join(userData, 'sessions')
   const chat = new ChatManager(ctx, registry, sessionsDir)
+  chatMgr = chat
 
   // 剪贴板历史：装配进 ctx 供 clipboard 命令，并常驻 watcher 轮询写入
   const clip = new ClipboardStore(join(userData, 'clipboard.jsonl'))

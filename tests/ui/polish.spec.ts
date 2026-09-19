@@ -169,6 +169,123 @@ test('会话续聊：跑一段后 Launcher 出最近会话 chip，点它回到�
   }
 })
 
+test('从最近会话进入后能继续对话（不卡住），且多轮历史完整恢复', async () => {
+  const l = await launchApp({})
+  try {
+    const bar = l.launcher.locator('.launcher .bar')
+    // 先跑一段**多轮**会话
+    const win = l.app.waitForEvent('window')
+    await bar.fill('第一句')
+    await bar.press('Enter')
+    const chat = await win
+    await expect(chat.locator('.bubble.assistant').last()).toContainText('已收到:', { timeout: 15_000 })
+    const cbox = chat.locator('.chat-input-row .chat-box')
+    for (const t of ['第二句', '第三句']) {
+      await cbox.fill(t)
+      await cbox.press('Enter')
+      await expect(chat.locator('.bubble.assistant').last()).toContainText(`已收到:${t}`, { timeout: 15_000 })
+    }
+
+    // 关闭 Chat（窗口销毁），从最近会话重新进入
+    await chat.close()
+    await expect(l.launcher.locator('.recent-chip').first()).toBeVisible({ timeout: 10_000 })
+    const win2 = l.app.waitForEvent('window')
+    await l.launcher.locator('.recent-chip').first().click()
+    const chat2 = await win2
+    // 三轮用户消息全部恢复（不是只恢复最近一句）
+    await expect(chat2.locator('.bubble.user')).toHaveCount(3, { timeout: 15_000 })
+    await expect(chat2.locator('.bubble.user').nth(0)).toContainText('第一句')
+    await expect(chat2.locator('.bubble.user').nth(1)).toContainText('第二句')
+    await expect(chat2.locator('.bubble.user').nth(2)).toContainText('第三句')
+
+    // 关键：输入框必须可用（卡住时它会一直 disabled / 显示「回答中…」）
+    const box = chat2.locator('.chat-input-row .chat-box')
+    await expect(box).toBeEnabled({ timeout: 10_000 })
+    await box.fill('第二句')
+    await box.press('Enter')
+    await expect(chat2.locator('.bubble.user').last()).toContainText('第二句')
+    await expect(chat2.locator('.bubble.assistant').last()).toContainText('已收到:第二句', { timeout: 15_000 })
+  } finally {
+    await l.cleanup()
+  }
+})
+
+test('Chat 已打开时切到别的会话（走 session:reset）后能继续对话', async () => {
+  const l = await launchApp({})
+  try {
+    const bar = l.launcher.locator('.launcher .bar')
+    // 会话 A
+    const win = l.app.waitForEvent('window')
+    await bar.fill('A的问题')
+    await bar.press('Enter')
+    const chat = await win
+    await expect(chat.locator('.bubble.assistant').last()).toContainText('已收到:', { timeout: 15_000 })
+    const recent = await l.launcher.evaluate(() =>
+      (window as unknown as { api: { session: { recent(): Promise<{ id: string }[]> } } }).api.session.recent(),
+    )
+    const idA = recent[0].id
+
+    // 切到新会话 B（Chat 窗口保持打开）
+    await l.launcher.evaluate(() =>
+      (window as unknown as { api: { session: { newSession(): Promise<unknown> } } }).api.session.newSession(),
+    )
+    const box = chat.locator('.chat-input-row .chat-box')
+    await expect(chat.locator('.bubble')).toHaveCount(0, { timeout: 10_000 })
+    await expect(box).toBeEnabled({ timeout: 10_000 })
+    await box.fill('B的问题')
+    await box.press('Enter')
+    await expect(chat.locator('.bubble.assistant').last()).toContainText('已收到:B的问题', { timeout: 15_000 })
+
+    // 关键路径：窗口开着时 attach 回会话 A → 应收到 reset 并恢复可用
+    await l.launcher.evaluate(
+      (id) => (window as unknown as { api: { session: { attach(i: string): Promise<unknown> } } }).api.session.attach(id),
+      idA,
+    )
+    await expect(chat.locator('.bubble.user').first()).toContainText('A的问题', { timeout: 15_000 })
+    await expect(box).toBeEnabled({ timeout: 10_000 })
+    await box.fill('A的追问')
+    await box.press('Enter')
+    await expect(chat.locator('.bubble.assistant').last()).toContainText('已收到:A的追问', { timeout: 15_000 })
+  } finally {
+    await l.cleanup()
+  }
+})
+
+test('运行中未批准就关窗 → 再从最近会话进入不应卡住', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'ctools-hang-'))
+  writeFileSync(join(root, 'victim.txt'), 'x')
+  const behavior: MockBehavior = {
+    toolName: 'file_rm',
+    toolArgs: JSON.stringify({ path: join(root, 'victim.txt') }),
+    streamReply: (t) => `已收到:${t}`,
+  }
+  const l = await launchApp({ fileRoots: [root], behavior })
+  try {
+    const bar = l.launcher.locator('.launcher .bar')
+    const win = l.app.waitForEvent('window')
+    await bar.fill('删掉那个测试文件')
+    await bar.press('Enter')
+    const chat = await win
+    // 停在批准面板上，不批准就关窗
+    await expect(chat.locator('.approve-box')).toContainText('file_rm', { timeout: 15_000 })
+    await chat.close()
+    await expect(l.launcher.locator('.recent-chip').first()).toBeVisible({ timeout: 10_000 })
+
+    // 再次进入该会话：窗口必须能开、输入必须可用
+    const win2 = l.app.waitForEvent('window')
+    await l.launcher.locator('.recent-chip').first().click()
+    const chat2 = await win2
+    const box = chat2.locator('.chat-input-row .chat-box')
+    await expect(box).toBeEnabled({ timeout: 10_000 })
+    await box.fill('还在吗')
+    await box.press('Enter')
+    await expect(chat2.locator('.bubble.assistant').last()).toContainText('已收到:还在吗', { timeout: 20_000 })
+  } finally {
+    await l.cleanup()
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('＋新会话：完成后点新会话 → Chat 清空到空会话', async () => {
   const l = await launchApp({})
   try {

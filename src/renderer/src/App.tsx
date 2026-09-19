@@ -468,7 +468,10 @@ export default function App() {
                     title={r.title}
                     onClick={() => {
                       setInput('')
-                      void window.api.session.attach(r.id)
+                      // 失败必须可见：以前静默吞掉，表现为「点了没反应」
+                      void window.api.session
+                        .attach(r.id)
+                        .catch((e) => setFatal(`打开会话失败：${(e as Error).message ?? e}`))
                     }}
                   >
                     {r.title}

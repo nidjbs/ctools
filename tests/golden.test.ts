@@ -474,6 +474,49 @@ describe('G9 P1 工具能力：ask / file_edit / grep / 并发顺序 / 工具描
   })
 })
 
+describe('G10 续聊（attach）：完整历史进入下一次请求', () => {
+  it('attach 一段多轮会话后追问，此前每一轮都仍在请求里', async () => {
+    responder = () => ({ stream: true, content: '好的' })
+    const chat = newChat()
+    await chat.open(undefined, io())
+    for (let i = 1; i <= 3; i++) await chat.run(`第${i}问`, io())
+    const id = chat.sessionId()!
+    expect(id).toBeTruthy()
+
+    // 新实例模拟「从最近会话进入」
+    const chat2 = newChat()
+    await chat2.attach(id)
+    expect(chat2.sessionId()).toBe(id)
+
+    gw.reset()
+    await chat2.run('追问', io())
+    const joined = gw.turns()[0].messages.map((m) => m.content ?? '').join('\n')
+    expect(joined).toContain('第1问')
+    expect(joined).toContain('第2问')
+    expect(joined).toContain('第3问')
+    expect(joined).toContain('追问')
+    // 会话上下文（角色/环境）也应在
+    expect(gw.turns()[0].messages[0].role).toBe('system')
+  })
+
+  it('attach 后助手此前回复也在请求里（不只用户消息）', async () => {
+    responder = (req) => ({ stream: true, content: `回复${req.messages.filter((m) => m.role === 'user').length}` })
+    const chat = newChat()
+    await chat.open(undefined, io())
+    await chat.run('Q1', io())
+    await chat.run('Q2', io())
+    const id = chat.sessionId()!
+
+    const chat2 = newChat()
+    await chat2.attach(id)
+    gw.reset()
+    await chat2.run('Q3', io())
+    const joined = gw.turns()[0].messages.map((m) => m.content ?? '').join('\n')
+    expect(joined).toContain('回复1')
+    expect(joined).toContain('回复2')
+  })
+})
+
 describe('G7 规划模式工具集：规划只读、执行全量', () => {
   const planText = '摘要：整理目录\n1. 调研现状\n2. 汇总结果'
 
