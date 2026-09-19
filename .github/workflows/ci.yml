@@ -1,9 +1,9 @@
 name: CI
 
-# 触发覆盖 master 与 main —— 远端两个分支都存在（默认分支为 main，实际开发在 master）。
+# master 是唯一长期分支（远端曾有一个已废弃的 main，现已删除）。
 on:
   push:
-    branches: [master, main]
+    branches: [master]
   pull_request:
 
 # 同一 ref 的新推送取消旧运行，避免排队堆积。

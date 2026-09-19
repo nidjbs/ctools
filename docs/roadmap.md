@@ -68,7 +68,9 @@ CTOOLS_USER_DATA=/tmp/u /tmp/x/cTools.app/Contents/MacOS/cTools   # 启动存活
 
 **与初版计划的差异**：原计划拆 4 个 job；实际合并为 2 个（`verify` 内含 typecheck/单测/黄金集/构建），避免重复 `npm ci` 的开销。黄金集仍单独跑一次，仅为在 CI 日志里独立成段便于定位。
 
-**触发范围**：`push: [master, main]` + 全部 `pull_request`；`ui-e2e` 额外限制为「PR 或 master 推送」以省 macOS 额度。同 ref 新推送自动取消旧运行（`concurrency`）。
+**触发范围**：`push: [master]` + 全部 `pull_request`；`ui-e2e` 额外限制为「PR 或 master 推送」以省 macOS 额度。同 ref 新推送自动取消旧运行（`concurrency`）。
+
+**分支现状**：`master` 是唯一长期分支。远端曾同时存在 `main`（早先历史重写前遗留，默认分支指向它、且仍带被抹除的措辞），经核实其**无任何独有内容**（树与 master 中的重写版完全一致），已删除。
 
 **约束（重要）**：UI e2e 驱动**真实 Electron**，且应用依赖 macOS 专有能力（`pbcopy` / `mdfind` / `sandbox-exec`）→ **只能在 `macos-latest` runner 上跑**（成本约为 Linux runner 的 10 倍）。Playwright 用本地 Electron 启动（`_electron.launch`），无需下载浏览器。
 
