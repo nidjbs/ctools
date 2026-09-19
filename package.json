@@ -2,6 +2,7 @@
   "name": "ctools",
   "version": "0.1.0",
   "private": true,
+  "author": "cTools",
   "description": "你的个人 AI 助手 —— 全局热键唤起的悬浮命令面板",
   "main": "./out/main/index.js",
   "scripts": {
@@ -12,7 +13,39 @@
     "test:golden": "vitest run tests/golden.test.ts",
     "test:ui": "electron-vite build && playwright test",
     "test:all": "npm run test && npm run test:ui",
-    "command:new": "node scripts/new-command.mjs"
+    "command:new": "node scripts/new-command.mjs",
+    "icon": "node scripts/make-icon.mjs",
+    "dist": "npm run build && electron-builder --mac --publish never",
+    "dist:dmg": "npm run build && electron-builder --mac dmg zip --publish never",
+    "dist:dir": "npm run build && electron-builder --mac --dir --publish never"
+  },
+  "build": {
+    "appId": "com.ctools.app",
+    "productName": "cTools",
+    "copyright": "Copyright © 2026",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "darkModeSupport": true,
+      "target": [
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "dmg": {
+      "title": "cTools ${version}"
+    }
   },
   "dependencies": {
     "jszip": "^3.10.1",
@@ -27,6 +60,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "44.1.1",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "typescript": "^5.5.4",
     "vite": "^5.4.0",
