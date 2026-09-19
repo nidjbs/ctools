@@ -12,7 +12,9 @@
 - 把一次满意的对话 **`/save` 沉淀成可复用模板**，下次首页一键直达
 
 > LLM 后端是跑在本机的一个 **OpenAI 兼容本地模型网关**（默认 `http://127.0.0.1:8080`），cTools 只负责指挥它。
-> 状态：**MVP**（主流程已贯通，定位个人工具，尚未打磨打包分发）。
+> 状态：**MVP 已结束，进入可发布阶段**。主流程、长期记忆、上下文工程与完整工具面均已贯通，并有单测 + 运行时 e2e + 黄金集 + UI e2e 四层回归；
+> 正在做的是**打包分发、CI 门禁、健壮性与产品化**——详见 **[docs/roadmap.md](docs/roadmap.md)**。
+> 当前仅支持 **macOS**，且**尚未提供签名安装包**（需从源码 `npm run dev` 运行）。
 
 ---
 
@@ -186,7 +188,12 @@ npm run test:ui        # UI e2e（真实 Electron + mock gateway）
 npm run test:all       # 全量回归
 npm run typecheck      # TS 双配置检查
 npm run command:new    # 生成新命令骨架 commands/<name>.ts
-npm run build          # 打包
+npm run build          # 构建 out/（electron-vite）
+npm run icon           # 重新生成应用图标（build/icon.{png,icns}）
+npm run dist           # 打包分发产物 dist/*.zip（macOS，arm64 + x64）
 ```
+
+> 打包走 npmmirror 镜像拉 Electron 二进制（见 `build.electronDownload`）——本机直连 GitHub 不稳定。
+> `.dmg`（`npm run dist:dmg`）需下载仅存于 GitHub 的 `dmg-builder`，网络可用时再用；未签名产物首次打开需右键「打开」。
 
 新增能力 = 注册一个 `Command`（`{ id, title, aliases, kind, schema, agentTool, run }`），悬浮联想、agent 工具、设置启停自动可用。开发请遵循 SDD：先 `specs/<feature>.md` 立行为契约，再写测试，后实现（见 `specs/README.md`）。

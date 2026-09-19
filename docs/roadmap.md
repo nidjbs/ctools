@@ -1,46 +1,157 @@
-# cTools 后续计划
+# cTools 后续计划：从 MVP 到可发布
 
-> 主框架与核心流程已贯通（Launcher 快捷命令 + agent Chat 对话流）。本文为下一步计划，按依赖排序。
+> **MVP 阶段已结束**（主流程贯通 + 长期记忆/上下文工程 + 完整工具面 + 四层测试）。
+> 本文是"非 MVP"（**可分发、稳定日用、有回归门禁、面向他人**）的路线图，按依赖排序，每个阶段附**可核验的验收证据**。
+>
+> 规范以 `AGENTS.md` 为准；架构不变量见 `docs/architecture.md`；行为契约在 `specs/`。
 
-## 已完成（主流程跑通）
+---
 
-- CommandRegistry（命令即插件）+ 悬浮 Launcher（前缀联想 / 最近常用 MRU）
-- quick 命令（trans / find_file）inline 快结果
-- **agent 对话流**：自由内容回车 → Chat 窗口 → gateway 流式（SSE）→ 会话事件（事件溯源）→ 工具调用分发到 `agentTool` 命令 → 可取消
-- runtime：gatewayClient（流式+abort）/ session（lean 事件溯源）/ agent loop / usage
-- **Chat 交互修复**：agent 进入时 Launcher 让位、Chat 窗聚焦；Chat 渲染改为 transcript 唯一事实源 + 流式 draft 气泡；agent 运行错误落 `agent.error` 事件（晚挂载也可见）
-- **会话持久化（#7）**：`Session.fromJSONL` 重放重建 + `latestSessionId` 保留（供将来显式续聊）；**默认每次打开即新会话**（不自动续上次）
-- **Chat markdown + 复制**：气泡渲染轻量 markdown（标题/列表/引用/代码块，无 innerHTML 无注入面），每条气泡与代码块一键复制
-- **窗口打磨（#2）**：Launcher 失焦收起（生产）/ 每次唤起即清空聚焦（`launcher:show`）/ Chat 关闭回 Launcher
-- **gateway 管理（#3）**：GatewayManager 探测 / `gw up` 拉起 / down / reload（admin HTTP）/ restart（依赖注入可单测）；启动 auto-start 受 `managedGateway` 开关控制（默认关，避免误拉外部进程）
-- **UI e2e**：Playwright 驱动真实 Electron + mock gateway（`tests/ui/`），覆盖启动/联想、quick+MRU、Chat 流式、gateway 不可达优雅失败、Settings
-- **Settings UI（#4）**：`settings` 触发开窗；gateway 状态/热更新/重启/托管开关、网络与别名表单（datalist 提示真实别名）、偏好（hotkey/file_roots/writeConfirm）、命令启停即刻生效；`config:update` 统一副作用（registry.syncEnabled + 热键重绑 + ctx 原地合并）
-- **Registry 启停覆盖**：`config.enabledCommands` 驱动 match/list/recent/toolIds/run，不改命令模块单例（specs/settings.md）
-- **file 只读工具（Phase 1，#5 起步）**：`file_read` / `file_list`，`shared/filePolicy` file_roots 强校验（含 `..` 穿越拒绝），无写/删入口；agentTool 可被 agent 调用（specs/file-tools.md）
-- **file 写/删 + 通用两段 confirm（#5/#8）**：`file_write` / `file_rm`，`needConfirm` 策略（never/always/auto→删除与覆盖已存在才确认）；Launcher 展示确认面板 → `commands.confirm` 带 `confirmApproved` 重放；命令非 agentTool（specs/file-tools.md Phase 2）
-- **agent 工具白名单（#8）**：agent 只执行 `toolIds()` 内工具；分发层对幻觉出的非白名单工具一律拒绝不执行。file 全套（read/list/write/rm）开放给 agent；破坏性写/删仍被 confirm 闸门拦截（agent 无 `confirmApproved` → 只返回确认、不落盘）（specs/agent-whitelist.md）
-- **上下文压缩（#6 TS 移植）**：`main/context.ts`——大 `tool.result` 无条件裁剪（head+tail，原事件保留审计）+ surface 计数 > high 时 shadow 最旧非 system 消息到 low；agent 每次模型请求前调用（specs/context.md）
-- **clipboard 本地召回（#5）**：`ClipboardStore`（append-only jsonl + 可注入 watcher）+ `clipboard` 命令（历史列表 / `clipboard <q>` 语义召回仅走 `clipboardLocalAlias` 本地模型，agentTool=false，specs/clipboard.md）
-- **office_read（#5）**：txt 系直读 + docx/xlsx（jszip 解包提文本）+ pdf（pdfjs-dist，best-effort）；只读 agentTool，file_roots 限定（specs/office-read.md）
-- **bash 命令执行（人工在环）**：`bash <cmd>`（agentTool，agent 可发起）——每次执行经 Chat 内 批准/拒绝 或 Launcher confirm；批准才真正执行（cwd=file_roots[0]，超时 30s，退出码+输出回显）；拒绝/超时记 `用户未批准`（specs/bash.md）
-- **agent 人工在环（onConfirm）**：工具返回 confirm → agent 循环暂停 → Chat 弹批准 → 批准后以 confirmApproved 重放（覆盖 bash 与 file_write/file_rm 破坏性操作）
-- 测试：单测 99 + UI e2e 11 全绿；typecheck + build 全绿
+## 0. 当前基线（已完成，可逐条核验）
 
-## 待办（建议顺序）
+| 能力 | 核验方式 |
+|---|---|
+| 命令注册表驱动一切（Launcher 联想 / agent 工具 / 设置启停同源） | `npm run test` 的 `registry` / `quickRun` |
+| agent runtime 内化于 Main（事件溯源会话 + 工具分发 + 人工在环） | `tests/e2e.test.ts`、`tests/agent.test.ts` |
+| 长期记忆（jsonl 事实源 + `MEMORY.md` 索引常驻 + 按需召回 + pinned） | `specs/memory.md`、`tests/memory.test.ts` |
+| 上下文工程（token 计量、环境注入、摘要+合并、大结果外置） | `specs/context.md`、`specs/system-prompt.md` |
+| 工具面（file 全套 + `file_edit` + `grep` + `find_file` + `office_read` + `bash` + `web_search` + 记忆 + `ask`） | `specs/file-*.md`、`specs/grep.md`、`specs/ask.md` |
+| 安全模型（file_roots + realpath 守卫 + OS 沙箱禁网 + confirm 闸门 + 白名单兜底） | `specs/bash.md`、`specs/file-tools.md`、`tests/pathGuard.test.ts`、`tests/shellSandbox.test.ts` |
+| 四层测试：单测 / 运行时 e2e / **黄金集** / UI e2e | `npm run test` 共 **293**（其中黄金集 22，可单跑 `npm run test:golden`）· `npm run test:ui` **26** |
 
-| # | 项 | 说明 | 依赖 |
-|---|---|---|---|
-| 1 | **真机端到端验证** | 用户 `npm run dev`：Launcher 快捷命令 + 自由内容→Chat 流式；配 gateway 别名（`config.json` defaultAlias=common 或 gateway 加 chat alias） | 本机 |
-| 2 | **全局热键 + 窗口管理** | `globalShortcut` 唤起/隐藏 Launcher、失焦收起、Esc 隐藏 | — |
-| 3 | **gateway 管理落地（architecture §6）** | Settings 编辑受管 gateway 配置 → `reload`(POST /admin/reload) / `restart`；auto-start 用受管配置 | 2 |
-| 4 | **Settings UI** | 命令启停/热键/gateway URL/本地 alias/file_roots/write_confirm；config 改动 → 热重建 runtime | 2,3 |
-| 5 | **命令迁移（带安全约束）** | clipboard recall（本地模型 alias，远端不碰）、file 工具（file_roots + confirm）、office_read 等 | 4 |
-| 6 | **上下文压缩（TS 移植 context.go）** | 长会话 compaction（head+tail 裁剪 / shadow） | agent 会话稳定后 |
-| 7 | **会话持久化 / resume** | session JSONL 重放、续聊 | — |
-| 8 | **安全强化** | agent 可调工具白名单；写/删除类命令默认不经 agent 直跑，走 quick+confirm | 5 |
+**当前版本**：`package.json` `0.1.0`。**定位**：个人工具，尚未打包分发。
 
-## 结构性待验证项
+---
 
-- Chat 窗口多轮（连续 send）串行是否正确、取消是否干净。
-- gatewayClient SSE 的 tool_calls 分片累积（多工具并行 index）。
-- 自由内容路由的歧义（有命令前缀但意图是对话时如何处理）。
+## 阶段一：可发布骨架（分发）—— 基本完成
+
+**目标**：产出可安装产物，版本可追溯。
+
+| # | 任务 | 状态 |
+|---|---|---|
+| 1.1 | 接入 `electron-builder` | ✅ `26.15.3`；`mac.target = zip`（`arm64` + `x64`）；`files` 只含 `out/` 与 `package.json`（依赖已被 electron-vite 打进 bundle，无需随包 `node_modules`） |
+| 1.2 | 应用标识与图标 | ✅ `appId=com.ctools.app`、`productName=cTools`；`scripts/make-icon.mjs` 无依赖生成 `build/icon.{png,icns}`（`npm run icon`），已随包（`Contents/Resources/icon.icns`） |
+| 1.3 | 生产构建校验 | ✅ 产物**启动验证通过**：解压 zip → 启动 `cTools.app` → 进程存活无崩溃、runtime 正常写 userData；`app.asar` 内 `out/main/index.js` 与动态 chunk `pdf-*.js` 均在 |
+| 1.4 | 版本策略 | ✅ `package.json.version` 为唯一源；新增 `CHANGELOG.md`（Keep a Changelog，含 0.1.0 基线条目） |
+| 1.5 | 代码签名 + 公证 | ⏸ **阻塞：需你自备 Apple Developer 账号**（`electron-builder` 已报 `0 valid identities`，产出为未签名包） |
+| 1.6 | 自动更新 | ⏸ 延后（`zip` + `blockmap` 已生成，具备接 `electron-updater` 的基础） |
+
+**产物**（`npm run dist`）：`dist/cTools-0.1.0-arm64-mac.zip`、`dist/cTools-0.1.0-mac.zip`（x64）+ 各自 `.blockmap`
+
+**验收（已跑通）**
+```sh
+npm run dist                                   # 产出 zip
+unzip -t dist/cTools-0.1.0-arm64-mac.zip       # 完整性 OK
+ditto -x -k dist/cTools-0.1.0-arm64-mac.zip /tmp/x
+CTOOLS_USER_DATA=/tmp/u /tmp/x/cTools.app/Contents/MacOS/cTools   # 启动存活、无崩溃
+```
+
+**未做 .dmg 的原因（环境约束）**：dmg 目标需下载 `dmg-builder` 辅助二进制，它**只在 GitHub Releases 分发**；本机到 GitHub 的连接不稳定（实测 `getaddrinfo ENOTFOUND github.com`，且 release 对象 25s 收 0 字节），npmmirror 无该路径。
+**取舍**：`zip`（含 `.app`）本身即完整交付物，且是未来自动更新所需格式 → 默认目标收敛为 `zip`；`npm run dist:dmg` 保留 dmg 目标，待网络可用时使用。
+
+**Electron 二进制镜像**：已在 `build.electronDownload.mirror` 指向 `https://npmmirror.com/mirrors/electron/`（否则同样卡在 GitHub）。如需换源，改这一处即可。
+
+**风险（仍待观察）**：`pdfjs-dist` 是动态 `import`（构建产物为独立 chunk）——asar 内该 chunk 存在已确认，但**实际解析 PDF** 需真实文档验证（当前未做）。
+
+---
+
+## 阶段二：回归门禁（CI）
+
+**目标**：改动即回归，防止已修行为回退。
+
+| # | 任务 | 说明 |
+|---|---|---|
+| 2.1 | GitHub Actions 工作流 | `on: [push, pull_request]`；job 分 `typecheck` / `unit+golden` / `build` / `ui-e2e` |
+| 2.2 | 依赖缓存 | 缓存 `~/.npm`；`npm ci` 保证锁文件生效 |
+| 2.3 | 分支保护 | `master` 要求 CI 通过才可合并；禁止直推（**与当前"直推 master"习惯不同，需你确认**） |
+| 2.4 | 失败可诊断 | UI e2e 失败时上传 trace/截图 artifact |
+
+**验收**：一个故意引入失败的 PR 被 CI 拦住；全绿 PR 的正常合并路径跑通。
+
+**约束（重要）**：UI e2e 驱动**真实 Electron**，且应用依赖 macOS 专有能力（`pbcopy` / `mdfind` / `sandbox-exec`）→ **只能在 `macos-latest` runner 上跑**（成本约为 Linux runner 的 10 倍）。建议：`typecheck + unit + golden` 在 Linux runner 跑（快、便宜），`ui-e2e` 仅在 `macos-latest` 且只在 PR 到 `master` 时触发。
+
+---
+
+## 阶段三：稳定日用（健壮性 / 性能）
+
+**目标**：连续日用不掉链子。
+
+| # | 任务 | 说明 |
+|---|---|---|
+| 3.1 | gateway 重试与退避 | **只对幂等请求**（`models`、非流式 `chat`）重试（指数退避 + 抖动）；4xx 不重试。**流式请求不盲目重试**——首个 SSE chunk 到达后可能已产生副作用或计费 |
+| 3.2 | 错误分类与呈现 | 区分「网络不可达 / 认证失败 / 模型不存在 / 上游 5xx」，给出可操作提示（而非统一 `执行失败: <原始错误>`） |
+| 3.3 | grep 异步化 | `readdirSync`/`readFileSync` 改 `fs/promises`，分批 `await` 让出事件循环 + 支持 `AbortSignal`。**当前实现同步遍历会阻塞主进程**（5000 文件上限只是兜底） |
+| 3.4 | 数据版本与迁移 | `config.json` 加 `schemaVersion` + 迁移函数；`sessions/`（事件溯源）天然向后兼容，无需迁移 |
+| 3.5 | 会话文件完整性 | 启动/加载时校验 JSONL 末行完整性（崩溃可能留下半行）；坏行跳过策略已有（`listSessions`），补齐 `fromJSONL` |
+| 3.6 | 长会话可用性 | 验证多轮长会话下压缩/摘要的实际表现（现有单测+黄金集覆盖语义，缺**真实长会话**观测） |
+
+**验收**
+```sh
+npm run test && npm run test:golden
+# 新增：重试/退避、错误分类、grep 异步（含 AbortSignal）、config 迁移 各自的单测
+# 手工：断开 gateway 后连续操作，确认提示可操作且不挂死；大目录 grep 期间 UI 不卡
+```
+
+---
+
+## 阶段四：产品化（首启 / 成本可见 / 文档）
+
+**目标**：他人拿到也能装起来用。
+
+| # | 任务 | 说明 |
+|---|---|---|
+| 4.1 | 首启向导 | 三步：填 gateway 地址 → **测连通**（调 `models` 并展示别名）→ 选 `file_roots`；现有首启引导条（Launcher 顶部）作为轻量兜底 |
+| 4.2 | token / 成本可见 | 从网关响应的 `usage` 字段累计；`UsageStore` 目前只记命令 MRU，扩展为「按会话/按天」统计，Settings 展示 |
+| 4.3 | 用户文档 | 新增 `docs/guide.md`：安装、首次配置、命令参考、隐私与安全边界、常见问题（README 保持概览定位） |
+| 4.4 | 更新与回滚说明 | 版本升级、配置备份（`userData` 目录说明）、数据清理 |
+
+**验收**：在一台**干净机器**（无 node_modules、无既有 config）上走通：安装 → 向导 → 首个命令 → agent 对话。
+
+---
+
+## 阶段五：跨平台
+
+**目标**：脱离 macOS 独占（**当前所有系统集成都是 macOS 专有**）。
+
+| # | 任务 | 说明 |
+|---|---|---|
+| 5.1 | `System` 抽象落地 | `src/main/system.ts` 已有接口，但只有 `MacSystem`；补 `LinuxSystem` / `WindowsSystem`（`pbcopy` → `xclip`/`clip`；`mdfind` → 复用 `grep` 的遍历或 `fd`/`rg`） |
+| 5.2 | 沙箱策略按平台降级 | `sandbox-exec` 是 macOS 独有。沿用现有先例——**`shellSandbox.ts` 在沙箱不可用时拒绝执行而非静默降级**；Linux 可接 `bwrap`，Windows 无等价 → bash 工具在无沙箱平台**默认禁用**并明示原因 |
+| 5.3 | 平台探测与能力声明 | 启动时探测可用能力（沙箱/剪贴板/搜索），Settings 展示"本机可用能力"，未支持项**显式置灰**而非运行时报错 |
+
+**验收**：Linux（至少一种发行版）上：Launcher / quick 命令 / agent 对话 / file 工具可用；`bash` 在无可用沙箱时**拒绝执行并说明**。
+
+---
+
+## 已知约束与风险（汇总）
+
+| 约束 | 影响 | 应对 |
+|---|---|---|
+| **GitHub 通道不稳定**（DNS 解析失败 / release 对象 0 字节） | Electron 二进制与 `dmg-builder` 等辅助二进制默认从 GitHub 拉取 → 构建卡死 | 已用 `electronDownload.mirror` 指向 npmmirror；`dmg-builder` 无镜像 → dmg 暂缓（见阶段一） |
+| Apple 签名/公证需付费开发者账号 | 未签名分发的用户会遇 Gatekeeper 拦截 | 阶段 1.5 前置确认；未签名则在用户文档明确说明 |
+| UI e2e 只能在 macOS runner | CI 成本高 | 拆分 job，ui-e2e 仅在必要时触发（阶段二） |
+| 沙箱为 macOS 独有 | 跨平台安全边界不等价 | 能力探测 + 显式拒绝（阶段五） |
+| 流式请求不可盲目重试 | 重试可能重放副作用/重复计费 | 只重试幂等请求（阶段三 3.1） |
+| `pdfjs` 动态 chunk + asar | 打包后可能加载失败 | 打包后专项验证（阶段一 1.3） |
+
+---
+
+## 版本与发布节奏（建议）
+
+| 版本 | 里程碑 | 判定 |
+|---|---|---|
+| `0.1.0` | 当前（MVP 结束） | — |
+| `0.5.0` | 阶段一 + 二完成 | 能给自己装、有 CI 门禁（**阶段一主体已完成**，待签名 + CI） |
+| `0.9.0` | 阶段三完成 | 可连续日用、数据可迁移 |
+| `1.0.0` | 阶段四完成 | 他人可独立安装使用（仍限 macOS） |
+| `1.x` | 阶段五完成 | 跨平台 |
+
+---
+
+## 已废弃的旧计划（本节保留仅为对照）
+
+早期 roadmap 中的以下条目**均已完成**，不再列为待办：全局热键与窗口管理、Settings UI、gateway 管理落地、上下文压缩、会话持久化/续聊、agent 工具白名单、命令迁移（clipboard/file/office）。
+
+其中两处**旧表述已被实现推翻**，以现行 spec 为准：
+- 「默认每次打开即新会话（不自动续上次）」→ 现已支持**显式续聊**（Launcher 最近会话 + Chat「＋新会话」，见 `specs/session-resume.md`）。
+- 「file 写/删**非 agentTool**」→ 现已**开放给 agent**，但破坏性操作**恒过 confirm 闸门**（见 `specs/file-tools.md`）。

@@ -1,6 +1,7 @@
 # cTools 架构设计
 
-状态：设计定稿（2026-09）。技术栈已拍板：**Electron + React + TypeScript（方向 A：全 TS）**。
+状态：**架构定稿并已实现**（MVP 结束）。技术栈：**Electron + React + TypeScript（全 TS）**。
+本文描述**不变量**与进程/契约设计；后续演进阶段（打包/CI/健壮性/跨平台）见 [roadmap.md](roadmap.md)。
 
 ## 1. 进程模型
 
@@ -99,18 +100,23 @@ cTools 负责本地模型网关（OpenAI 兼容）的起停与配置热更（探
   - 界面给出"哪些项适合 reload、哪些需 restart"的提示。
 - **生命周期**：cTools 退出时可选择"保留 gateway 常驻"或"随 cTools 关闭"（可配置）。
 
-## 7. 里程碑顺序（建议 v1）
+## 7. 演进阶段
+
+**已完成的里程碑**（MVP，均已落地并可核验）：
 
 1. 仓库骨架：Electron + React/TS + CommandRegistry + gateway client + gateway manager。
-2. 首批命令：trans / ask / clipboard（watcher+本地召回）/ find_file（mdfind）/ file 工具。
-3. Chat 窗口 + agent runtime（session / context / agent loop）。
-4. Settings 全量 + schedule（后台）收编。
+2. 首批命令：trans / find_file / file 工具（read·list·write·edit·rm）/ clipboard / office_read / bash / web_search。
+3. Chat 窗口 + agent runtime（session 事件溯源 / context 压缩与摘要 / agent loop / 人工在环 / plan 模式）。
+4. Settings 全量 + 长期记忆 + 上下文工程（token 计量、环境注入、大结果外置）。
 
-## 8. 明确不做（v1）
+**后续阶段**（打包分发 / CI 门禁 / 健壮性 / 产品化 / 跨平台）见 **[roadmap.md](roadmap.md)**。
 
-- 不引入网络工具（保持"无外传"安全边界）。
+## 8. 边界（不做什么）
+
+- **默认无网络外传**：`web_search` 默认关闭，开启后每次调用仍需人工批准；`bash` 默认经 OS 沙箱禁网。新增网络能力必须自带显式开关 + 二次确认。
 - 不做独立 CLI 式起停界面——gateway 的起停与热更统一由 gateway manager（UI 内）承担。
 - 不做多用户 / 云同步。
+- 不做"绕过 confirm 的自动化写路径"——agent 没有任何免批通道。
 
 ## 9. 可执行契约（供实现参考）
 
