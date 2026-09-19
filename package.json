@@ -40,7 +40,13 @@
       "icon": "build/icon.icns",
       "darkModeSupport": true,
       "target": [
-        { "target": "zip", "arch": ["arm64", "x64"] }
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ]
     },
     "dmg": {
@@ -48,6 +54,7 @@
     }
   },
   "dependencies": {
+    "js-yaml": "^5.4.2",
     "jszip": "^3.10.1",
     "pdfjs-dist": "^6.3.289",
     "react": "^18.3.1",

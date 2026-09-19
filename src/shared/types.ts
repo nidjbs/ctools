@@ -73,6 +73,43 @@ export interface SavedMeta {
   paramHint: string
 }
 
+// ---------- 网关配置文件（providers / aliases）----------
+
+/** 上游配置。`api_key_env` 是**环境变量名**，cTools 不存也不回显真实密钥。 */
+export interface GwProvider {
+  type: string
+  base_url: string
+  request_timeout?: string
+  api_key_env?: string
+  [k: string]: unknown
+}
+
+export interface GwAlias {
+  provider: string
+  model: string
+}
+
+export interface GwConfigView {
+  path: string
+  exists: boolean
+  providers: Record<string, GwProvider>
+  aliases: Record<string, GwAlias>
+  /** 读/解析失败的原因（存在时编辑区应禁用）。 */
+  error?: string
+}
+
+export interface GwSaveInput {
+  providers: Record<string, GwProvider>
+  aliases: Record<string, GwAlias>
+}
+
+export interface GwSaveResult {
+  ok: boolean
+  /** 备份文件路径（成功时）。 */
+  backup?: string
+  error?: string
+}
+
 /** 记忆条目元数据（无正文，可经 IPC）。 */
 export interface MemoryMeta {
   id: string
@@ -223,6 +260,10 @@ export interface CtoolsApi {
     reload(): Promise<{ ok: boolean; error?: string }>
     restart(): Promise<'running' | 'stopped'>
     ensure(): Promise<'running' | 'stopped'>
+    /** 读网关配置文件的 providers / aliases。见 specs/gateway-config.md。 */
+    config(): Promise<GwConfigView>
+    /** 写回 providers / aliases（备份 + 校验 + 原子写）；apply=reload 热更 / restart 重启。 */
+    configSave(input: GwSaveInput, apply: 'reload' | 'restart'): Promise<GwSaveResult & { applied?: boolean; applyError?: string }>
   }
   window: {
     hide(): Promise<void>

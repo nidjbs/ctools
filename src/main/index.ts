@@ -18,10 +18,19 @@ import { UsageStore } from './usage'
 import { ChatManager, ChatIO } from './chat'
 import { ClipboardStore, startClipboardWatch } from './clipboard'
 import { listSaves, saveCommand, removeSave, distillDraft, type DraftMeta } from './saves'
+import { readGwFile, writeGwFile } from './gwFile'
 import { listSessions } from './session'
 import { realInside } from './pathGuard'
 import { bootstrapFromGw, reconcileDefaultAlias } from './gwConfig'
-import type { AgentMode, AppConfig, CommandMeta, Ctx, SessionEvent, SavedMeta } from '../shared/types'
+import type {
+  AgentMode,
+  AppConfig,
+  CommandMeta,
+  Ctx,
+  GwSaveInput,
+  SessionEvent,
+  SavedMeta,
+} from '../shared/types'
 
 // 测试隔离 seam：e2e 用 CTOOLS_USER_DATA 指向临时目录，默认零影响。
 if (process.env['CTOOLS_USER_DATA']) app.setPath('userData', process.env['CTOOLS_USER_DATA'])
@@ -307,6 +316,19 @@ app.whenReady().then(async () => {
     const s = await gateway.ensureStarted()
     if (s === 'running') await reconcileDefaultAlias(ctx)
     return s
+  })
+  // 网关配置（providers / aliases）：读 + 写回（备份/校验/原子写）+ 应用。specs/gateway-config.md
+  ipcMain.handle('gateway:config', () => readGwFile(gateway.gwConfigFile()))
+  ipcMain.handle('gateway:configSave', async (_e, input: GwSaveInput, apply: 'reload' | 'restart') => {
+    const r = writeGwFile(gateway.gwConfigFile(), input)
+    if (!r.ok) return r
+    // 配置已落盘：即便应用失败也要如实告知（避免用户以为「没生效=没保存」）
+    if (apply === 'reload') {
+      const a = await gateway.reload()
+      return { ...r, applied: a.ok, ...(a.ok ? {} : { applyError: a.error ?? '热更失败' }) }
+    }
+    const s = await gateway.restart()
+    return { ...r, applied: s === 'running', ...(s === 'running' ? {} : { applyError: '重启后仍未就绪' }) }
   })
   ipcMain.handle('system:copy', (_e, text: string) => ctx.system.pbcopy(text))
   // 文件动作：file_roots 越界（含 symlink 逃逸）把关后交系统 open（-R = Finder 定位）。越界/失败返回 false。

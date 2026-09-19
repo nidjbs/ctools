@@ -30,6 +30,8 @@ const api: CtoolsApi = {
     reload: handle('gateway:reload'),
     restart: handle('gateway:restart'),
     ensure: handle('gateway:ensure'),
+    config: handle('gateway:config'),
+    configSave: handle('gateway:configSave'),
   },
   window: {
     hide: handle('window:hide'),

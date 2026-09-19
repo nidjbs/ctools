@@ -121,6 +121,8 @@ export interface LaunchOpts {
   down?: boolean
   /** 打桩原生「选择目录」对话框的返回值（原生对话框无法在 e2e 里点击）。 */
   pickDir?: string
+  /** 用一份临时 gateway 配置替代真实的 ~/gw.yaml（网关配置编辑的 UI e2e 用）。 */
+  gwConfig?: string
 }
 
 export interface Launched {
@@ -131,7 +133,7 @@ export interface Launched {
 }
 
 export async function launchApp(opts: LaunchOpts = {}): Promise<Launched> {
-  const { behavior = {}, fileRoots = [], down = false, pickDir } = opts
+  const { behavior = {}, fileRoots = [], down = false, pickDir, gwConfig } = opts
   let mock: Mock | null = null
   let base: string
   if (down) {
@@ -150,6 +152,8 @@ export async function launchApp(opts: LaunchOpts = {}): Promise<Launched> {
   delete env.ELECTRON_RENDERER_URL // 走 out/ 构建产物，不接 dev server
   if (pickDir === undefined) delete env.CTOOLS_PICK_DIR
   else env.CTOOLS_PICK_DIR = pickDir
+  if (gwConfig === undefined) delete env.GW_GATEWAY_CONFIG
+  else env.GW_GATEWAY_CONFIG = gwConfig
 
   const app = await _electron.launch({ args: [ROOT], cwd: ROOT, env })
   const launcher = await app.firstWindow()

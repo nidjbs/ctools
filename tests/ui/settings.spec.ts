@@ -64,7 +64,7 @@ test('表单保存：defaultAlias / hotkey / file_roots 落盘', async () => {
       .locator('label', { hasText: 'file_roots' })
       .locator('textarea')
       .fill('/tmp\n/Users/mac/Documents')
-    await settings.locator('button', { hasText: '保存' }).click()
+    await settings.locator('button', { hasText: /^\s*保存\s*$/ }).click()
     await expect(settings.locator('.notice')).toContainText('已保存')
 
     const disk = await diskConfig(l.userData)

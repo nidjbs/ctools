@@ -2,7 +2,7 @@
 // 覆盖可控交互：复制 toast / text 可复制、Chat 就地确认、工具过程可见、多行输入、最近会话续聊、
 // 新会话、模板删除（经由 /save 蒸馏回退沉淀 → 删除）、首启网关引导条、设置剪贴板本地别名字段。
 import { test, expect, type Page } from '@playwright/test'
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { launchApp, type MockBehavior } from './helpers'
@@ -393,12 +393,60 @@ test('设置：模型分配区（默认 + 各场景）；连接区默认折叠�
 
     // 场景模型保存落盘
     await transField.fill('ds')
-    await settings.locator('button', { hasText: '保存' }).click()
+    await settings.locator('button', { hasText: /^\s*保存\s*$/ }).click()
     await expect(settings.locator('.notice')).toContainText('已保存')
     const disk = JSON.parse(readFileSync(join(l.userData, 'config.json'), 'utf-8'))
     expect(disk.commandModels).toMatchObject({ trans: 'ds' })
   } finally {
     await l.cleanup()
+  }
+})
+
+test('网关配置：读取 ~/gw.yaml 的 providers/aliases，编辑后写回并保留其余键', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ctools-gwui-'))
+  const gwFile = join(dir, 'gw.yaml')
+  writeFileSync(
+    gwFile,
+    ['listen: 127.0.0.1:8080', 'auth:', '  mode: none', 'providers:', '  ds:', '    type: openai', '    base_url: https://api.deepseek.com', 'aliases:', '  common:', '    provider: ds', '    model: deepseek-v4-flash', ''].join('\n'),
+  )
+  const l = await launchApp({ gwConfig: gwFile })
+  try {
+    const settings = await openSettings(l)
+    const section = settings.locator('section', { has: settings.locator('h2', { hasText: '网关配置' }) })
+    await expect(section).toContainText(gwFile)
+    // 读到了现有的上游与别名（input 的 value 不计入 textContent，须断言 value）
+    await expect(section.locator('.gw-list').first().locator('li').first().locator('input').nth(2)).toHaveValue(
+      'https://api.deepseek.com',
+    )
+    await expect(section.locator('.gw-list').nth(1).locator('li').first().locator('input').nth(1)).toHaveValue(
+      'deepseek-v4-flash',
+    )
+
+    // 加一个上游 + 一个别名
+    await section.locator('button', { hasText: '添加上游' }).click()
+    const newProvider = section.locator('.gw-list').first().locator('li').last()
+    await newProvider.locator('input').nth(0).fill('ollama')
+    await newProvider.locator('input').nth(2).fill('http://localhost:11434/v1')
+    await section.locator('button', { hasText: '添加别名' }).click()
+    const newAlias = section.locator('.gw-list').nth(1).locator('li').last()
+    await newAlias.locator('input').nth(0).fill('trans')
+    await newAlias.locator('select').selectOption('ollama')
+    await newAlias.locator('input').nth(1).fill('hy-mt1.5')
+
+    await section.locator('button', { hasText: '保存并热更' }).click()
+    await expect(section.locator('.notice')).toBeVisible({ timeout: 15_000 })
+
+    // 磁盘上：新内容写入，且 listen/auth 等未被本功能管理的键原样保留
+    const doc = (await import('js-yaml')).load(readFileSync(gwFile, 'utf-8')) as Record<string, unknown>
+    expect(doc.listen).toBe('127.0.0.1:8080')
+    expect(doc.auth).toEqual({ mode: 'none' })
+    expect(Object.keys(doc.providers as object).sort()).toEqual(['ds', 'ollama'])
+    expect((doc.aliases as Record<string, { model: string }>).trans.model).toBe('hy-mt1.5')
+    // 有备份
+    expect(readdirSync(dir).some((f) => f.includes('.bak-'))).toBe(true)
+  } finally {
+    await l.cleanup()
+    rmSync(dir, { recursive: true, force: true })
   }
 })
 
@@ -409,7 +457,7 @@ test('设置：剪贴板本地模型别名字段存在并保存落盘', async ()
     const field = settings.locator('label', { hasText: '剪贴板召回模型（本地）' }).locator('input')
     await expect(field).toBeVisible()
     await field.fill('trans')
-    await settings.locator('button', { hasText: '保存' }).click()
+    await settings.locator('button', { hasText: /^\s*保存\s*$/ }).click()
     await expect(settings.locator('.notice')).toContainText('已保存')
     const disk = JSON.parse(readFileSync(join(l.userData, 'config.json'), 'utf-8'))
     expect(disk.clipboardLocalAlias).toBe('trans')

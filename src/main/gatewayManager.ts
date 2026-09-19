@@ -76,6 +76,11 @@ export class GatewayManager {
     return process.env.GW_GATEWAY_CONFIG || join(homedir(), 'gw.yaml')
   }
 
+  /** 供「网关配置编辑」使用的配置文件路径（同一来源，避免两处解析不一致）。 */
+  gwConfigFile(): string {
+    return this.gwConfigPath()
+  }
+
   /** 最近一次失败原因（供 UI 展示）。 */
   lastError(): string | null {
     return this.lastErr

@@ -392,6 +392,42 @@ body {
   color: #e8c566;
 }
 
+/* 网关配置编辑：providers / aliases 行式表单 */
+.settings h3.sub {
+  font-size: 13px;
+  color: #bbb;
+  margin-top: 6px;
+}
+.gw-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gw-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.gw-list .bar {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.gw-list .gw-name {
+  max-width: 110px;
+}
+.gw-list .gw-wide {
+  flex: 1;
+  min-width: 120px;
+}
+.settings code {
+  background: #232336;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
 /* 高级区（折叠）：默认收起，避免把「通常无需修改」的字段摆成主字段 */
 .settings .adv {
   border: 1px solid #333;
