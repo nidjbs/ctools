@@ -391,6 +391,25 @@ body {
 .settings .hint strong {
   color: #e8c566;
 }
+
+/* 高级区（折叠）：默认收起，避免把「通常无需修改」的字段摆成主字段 */
+.settings .adv {
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #232330;
+}
+.settings .adv summary {
+  cursor: pointer;
+  color: #aaa;
+  font-size: 12px;
+}
+.settings .adv[open] summary {
+  margin-bottom: 8px;
+}
+.settings .adv .hint {
+  margin-top: 8px;
+}
 .mems {
   list-style: none;
   padding: 0;

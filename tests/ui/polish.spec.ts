@@ -376,11 +376,37 @@ test('agent 提问（ask）：Chat 内出现提问条，回答后回填并继续
   }
 })
 
+test('设置：模型分配区（默认 + 各场景）；连接区默认折叠但在高级里', async () => {
+  const l = await launchApp({})
+  try {
+    const settings = await openSettings(l)
+    // 模型区：默认 + 翻译场景（直接按 label 定位，避免 section 的 hasText 误命中别处的「模型」二字）
+    await expect(settings.locator('label', { hasText: '默认模型别名' })).toBeVisible()
+    const transField = settings.locator('label', { hasText: '翻译（trans）' }).locator('input')
+    await expect(transField).toBeVisible()
+
+    // 连接字段默认**不可见**（折叠在高级里），不再作为主字段
+    await expect(settings.locator('label', { hasText: 'gateway URL' })).toBeHidden()
+    await expect(settings.locator('.adv summary')).toContainText('通常无需修改')
+    await settings.locator('.adv summary').click()
+    await expect(settings.locator('label', { hasText: 'gateway URL' })).toBeVisible()
+
+    // 场景模型保存落盘
+    await transField.fill('ds')
+    await settings.locator('button', { hasText: '保存' }).click()
+    await expect(settings.locator('.notice')).toContainText('已保存')
+    const disk = JSON.parse(readFileSync(join(l.userData, 'config.json'), 'utf-8'))
+    expect(disk.commandModels).toMatchObject({ trans: 'ds' })
+  } finally {
+    await l.cleanup()
+  }
+})
+
 test('设置：剪贴板本地模型别名字段存在并保存落盘', async () => {
   const l = await launchApp({})
   try {
     const settings = await openSettings(l)
-    const field = settings.locator('label', { hasText: '剪贴板本地模型别名' }).locator('input')
+    const field = settings.locator('label', { hasText: '剪贴板召回模型（本地）' }).locator('input')
     await expect(field).toBeVisible()
     await field.fill('trans')
     await settings.locator('button', { hasText: '保存' }).click()

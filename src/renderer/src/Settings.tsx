@@ -2,6 +2,7 @@
 // 数据经类型化 IPC（config.get/update, commands.all, gateway.*）。specs/settings.md。
 import { useEffect, useRef, useState } from 'react'
 import type { AppConfig, CommandMeta, MemoryMeta } from '../../shared/types'
+import { MODEL_SCENARIOS } from '../../shared/model'
 
 export default function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null)
@@ -49,6 +50,7 @@ export default function Settings() {
         adminUrl: cfg.adminUrl.trim(),
         adminToken: cfg.adminToken,
         defaultAlias: cfg.defaultAlias.trim(),
+        commandModels: cfg.commandModels,
         clipboardLocalAlias: cfg.clipboardLocalAlias?.trim(),
         hotkey: cfg.hotkey.trim(),
         fileRoots: cfg.fileRoots.map((p) => p.trim()).filter(Boolean),
@@ -200,41 +202,77 @@ export default function Settings() {
       </section>
 
       <section>
-        <h2>网关与模型</h2>
+        <h2>模型</h2>
+        <datalist id="alias-list">
+          {models.map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
         <div className="grid">
-          <label>
-            gateway URL
-            <input className="bar" value={cfg.gatewayUrl} onChange={(e) => set({ gatewayUrl: e.target.value })} />
-          </label>
-          <label>
-            admin URL
-            <input className="bar" value={cfg.adminUrl} onChange={(e) => set({ adminUrl: e.target.value })} />
-          </label>
-          <label>
-            admin token
-            <input className="bar" type="password" value={cfg.adminToken ?? ''} onChange={(e) => set({ adminToken: e.target.value })} />
-          </label>
-          <label>
+          <label className="wide">
             默认模型别名
-            <input className="bar" list="alias-list" value={cfg.defaultAlias} onChange={(e) => set({ defaultAlias: e.target.value })} />
-            <datalist id="alias-list">
-              {models.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-          </label>
-          <label>
-            剪贴板本地模型别名
             <input
               className="bar"
               list="alias-list"
-              placeholder="留空则剪贴板召回退回远端（不推荐）"
+              value={cfg.defaultAlias}
+              onChange={(e) => set({ defaultAlias: e.target.value })}
+            />
+            <span className="hint">未单独指定的场景都用它（agent 对话、上下文摘要、/save 蒸馏…）。</span>
+          </label>
+          {MODEL_SCENARIOS.map((s) => (
+            <label key={s.id}>
+              {s.label}
+              <input
+                className="bar"
+                list="alias-list"
+                placeholder={`留空 = 用默认（${cfg.defaultAlias || '未设置'}）`}
+                value={cfg.commandModels?.[s.id] ?? ''}
+                onChange={(e) => set({ commandModels: { ...(cfg.commandModels ?? {}), [s.id]: e.target.value } })}
+              />
+              <span className="hint">{s.hint}</span>
+            </label>
+          ))}
+          <label>
+            剪贴板召回模型（本地）
+            <input
+              className="bar"
+              list="alias-list"
+              placeholder="留空 = 用默认模型（不推荐）"
               value={cfg.clipboardLocalAlias ?? ''}
               onChange={(e) => set({ clipboardLocalAlias: e.target.value })}
             />
-            <span className="hint">剪贴板语义召回只走本地模型别名（隐私），留空则用默认/远端。</span>
+            <span className="hint">剪贴板语义召回只走本地模型别名（隐私），留空则退回默认/远端。</span>
           </label>
         </div>
+      </section>
+
+      <section>
+        <h2>连接（高级）</h2>
+        <details className="adv">
+          <summary>默认 127.0.0.1:8080 / 8081 —— 通常无需修改</summary>
+          <div className="grid">
+            <label>
+              gateway URL
+              <input className="bar" value={cfg.gatewayUrl} onChange={(e) => set({ gatewayUrl: e.target.value })} />
+            </label>
+            <label>
+              admin URL
+              <input className="bar" value={cfg.adminUrl} onChange={(e) => set({ adminUrl: e.target.value })} />
+            </label>
+            <label>
+              admin token
+              <input
+                className="bar"
+                type="password"
+                value={cfg.adminToken ?? ''}
+                onChange={(e) => set({ adminToken: e.target.value })}
+              />
+            </label>
+          </div>
+          <p className="hint">
+            这是本地网关的固定入口。改动前请确认目标确实在运行——填错会导致命令与对话全部不可用，且不易自查。
+          </p>
+        </details>
       </section>
 
       <section>

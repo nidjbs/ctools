@@ -9,6 +9,7 @@ export function defaultConfig(): AppConfig {
     adminUrl: 'http://127.0.0.1:8081',
     adminToken: '',
     defaultAlias: 'chat',
+    commandModels: {},
     clipboardLocalAlias: '',
     fileRoots: [],
     writeConfirm: 'auto',

@@ -143,6 +143,8 @@ export interface AppConfig {
   adminUrl: string
   adminToken?: string
   defaultAlias: string
+  /** 各固定场景的模型别名（命令 id → 别名）；未设置/空串回退 defaultAlias。见 specs/settings.md §2。 */
+  commandModels?: Record<string, string>
   clipboardLocalAlias?: string
   fileRoots: string[]
   writeConfirm: 'auto' | 'always' | 'never'

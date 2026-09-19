@@ -1,5 +1,6 @@
 import type { Command } from '../src/shared/types'
 import { queryText } from '../src/shared/tool'
+import { resolveModel } from '../src/shared/model'
 
 // 示例 Command：quick 单轮。悬浮输入 / 回车直接 inline 出译文。
 export const trans: Command = {
@@ -14,7 +15,7 @@ export const trans: Command = {
     const text = queryText(input)
     if (!text) return { type: 'text', text: '输入要翻译的内容' }
     const turn = await ctx.gateway.chat({
-      model: ctx.config.defaultAlias,
+      model: resolveModel(ctx.config, 'trans'), // 可用「各场景模型」单独指定
       messages: [
         { role: 'system', content: '你是翻译引擎。中文输入→英文输出, 英文输入→中文输出。只输出译文。' },
         { role: 'user', content: text },
