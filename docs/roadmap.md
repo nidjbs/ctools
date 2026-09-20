@@ -17,13 +17,13 @@
 | 上下文工程（token 计量、环境注入、摘要+合并、大结果外置） | `specs/context.md`、`specs/system-prompt.md` |
 | 工具面（file 全套 + `file_edit` + `grep` + `find_file` + `office_read` + `bash` + `web_search` + 记忆 + `ask`） | `specs/file-*.md`、`specs/grep.md`、`specs/ask.md` |
 | 安全模型（file_roots + realpath 守卫 + OS 沙箱禁网 + confirm 闸门 + 白名单兜底） | `specs/bash.md`、`specs/file-tools.md`、`tests/pathGuard.test.ts`、`tests/shellSandbox.test.ts` |
-| 四层测试：单测 / 运行时 e2e / **黄金集** / UI e2e | `npm run test` 共 **293**（其中黄金集 22，可单跑 `npm run test:golden`）· `npm run test:ui` **26** |
+| 四层测试：单测 / 运行时 e2e / **黄金集** / UI e2e | `npm run test` 共 **353**（其中黄金集 22，可单跑 `npm run test:golden`）· `npm run test:ui` **35** |
 
-**当前版本**：`package.json` `0.1.0`。**定位**：个人工具，尚未打包分发。
+**当前版本**：`package.json` `0.5.0`（首个可分发版本）。**定位**：macOS 个人工具，已自包含 gateway、未签名。
 
 ---
 
-## 阶段一：可发布骨架（分发）—— 基本完成
+## 阶段一：可发布骨架（分发）—— 已完成（签名除外）
 
 **目标**：产出可安装产物，版本可追溯。
 
@@ -46,7 +46,9 @@ ditto -x -k dist/cTools-0.1.0-arm64-mac.zip /tmp/x
 CTOOLS_USER_DATA=/tmp/u /tmp/x/cTools.app/Contents/MacOS/cTools   # 启动存活、无崩溃
 ```
 
-**未做 .dmg 的原因（环境约束）**：dmg 目标需下载 `dmg-builder` 辅助二进制，它**只在 GitHub Releases 分发**；本机到 GitHub 的连接不稳定（实测 `getaddrinfo ENOTFOUND github.com`，且 release 对象 25s 收 0 字节），npmmirror 无该路径。
+**`.dmg` 已用系统自带 `hdiutil` 解决**（不再依赖只存于 GitHub 的 dmgbuild 辅助包）：`npm run dist:dmg` 产出两个架构的 dmg。
+
+**原先未做 .dmg 的原因（已绕过）**：dmg 目标需下载 `dmg-builder` 辅助二进制，它**只在 GitHub Releases 分发**；本机到 GitHub 的连接不稳定（实测 `getaddrinfo ENOTFOUND github.com`，且 release 对象 25s 收 0 字节），npmmirror 无该路径。
 **取舍**：`zip`（含 `.app`）本身即完整交付物，且是未来自动更新所需格式 → 默认目标收敛为 `zip`；`npm run dist:dmg` 保留 dmg 目标，待网络可用时使用。
 
 **Electron 二进制镜像**：已在 `build.electronDownload.mirror` 指向 `https://npmmirror.com/mirrors/electron/`（否则同样卡在 GitHub）。如需换源，改这一处即可。
@@ -55,7 +57,7 @@ CTOOLS_USER_DATA=/tmp/u /tmp/x/cTools.app/Contents/MacOS/cTools   # 启动存活
 
 ---
 
-## 阶段二：回归门禁（CI）—— 工作流已就绪
+## 阶段二：回归门禁（CI）—— 已完成
 
 **目标**：改动即回归，防止已修行为回退。
 
@@ -74,22 +76,22 @@ CTOOLS_USER_DATA=/tmp/u /tmp/x/cTools.app/Contents/MacOS/cTools   # 启动存活
 
 **约束（重要）**：UI e2e 驱动**真实 Electron**，且应用依赖 macOS 专有能力（`pbcopy` / `mdfind` / `sandbox-exec`）→ **只能在 `macos-latest` runner 上跑**（成本约为 Linux runner 的 10 倍）。Playwright 用本地 Electron 启动（`_electron.launch`），无需下载浏览器。
 
-**尚未验证**：工作流只在推送后由 GitHub 实际执行过才算数；本地仅验证了 YAML 结构与其中各条命令（`npm run typecheck/test/build`）可跑通。首次运行结果请在仓库 Actions 页确认。
+**已验证**：首次推送后 GitHub 实际执行——8 次失败（Linux job 依赖 macOS 专有的 `sandbox-exec`）已修复，现 `verify`（约 35s）与 `ui-e2e`（约 100s）双双通过。
 
 ---
 
-## 阶段三：稳定日用（健壮性 / 性能）
+## 阶段三：稳定日用（健壮性 / 性能）—— 主体完成
 
 **目标**：连续日用不掉链子。
 
 | # | 任务 | 说明 |
 |---|---|---|
-| 3.1 | gateway 重试与退避 | **只对幂等请求**（`models`、非流式 `chat`）重试（指数退避 + 抖动）；4xx 不重试。**流式请求不盲目重试**——首个 SSE chunk 到达后可能已产生副作用或计费 |
-| 3.2 | 错误分类与呈现 | 区分「网络不可达 / 认证失败 / 模型不存在 / 上游 5xx」，给出可操作提示（而非统一 `执行失败: <原始错误>`） |
-| 3.3 | grep 异步化 | `readdirSync`/`readFileSync` 改 `fs/promises`，分批 `await` 让出事件循环 + 支持 `AbortSignal`。**当前实现同步遍历会阻塞主进程**（5000 文件上限只是兜底） |
-| 3.4 | 数据版本与迁移 | `config.json` 加 `schemaVersion` + 迁移函数；`sessions/`（事件溯源）天然向后兼容，无需迁移 |
-| 3.5 | 会话文件完整性 | 启动/加载时校验 JSONL 末行完整性（崩溃可能留下半行）；坏行跳过策略已有（`listSessions`），补齐 `fromJSONL` |
-| 3.6 | 长会话可用性 | 验证多轮长会话下压缩/摘要的实际表现（现有单测+黄金集覆盖语义，缺**真实长会话**观测） |
+| 3.1 | ✅ gateway 重试与退避 | **只对幂等请求**（`models`、非流式 `chat`）重试（指数退避 + 抖动）；4xx 不重试。**流式请求不盲目重试**——首个 SSE chunk 到达后可能已产生副作用或计费 |
+| 3.2 | ✅ 错误分类与呈现 | 区分「网络不可达 / 认证失败 / 模型不存在 / 上游 5xx」，给出可操作提示（而非统一 `执行失败: <原始错误>`） |
+| 3.3 | ✅ grep 异步化 | `readdirSync`/`readFileSync` 改 `fs/promises`，分批 `await` 让出事件循环 + 支持 `AbortSignal`。**当前实现同步遍历会阻塞主进程**（5000 文件上限只是兜底） |
+| 3.4 | ✅ 数据版本与迁移 | `config.json` 加 `schemaVersion` + 迁移函数；`sessions/`（事件溯源）天然向后兼容，无需迁移 |
+| 3.5 | ⏸ 会话文件完整性 | 启动/加载时校验 JSONL 末行完整性（崩溃可能留下半行）；坏行跳过策略已有（`listSessions`），补齐 `fromJSONL` |
+| 3.6 | ⏸ 长会话可用性 | 验证多轮长会话下压缩/摘要的实际表现（现有单测+黄金集覆盖语义，缺**真实长会话**观测） |
 
 **验收**
 ```sh
@@ -100,16 +102,16 @@ npm run test && npm run test:golden
 
 ---
 
-## 阶段四：产品化（首启 / 成本可见 / 文档）
+## 阶段四：产品化（首启 / 成本可见 / 文档）—— 部分完成
 
 **目标**：他人拿到也能装起来用。
 
 | # | 任务 | 说明 |
 |---|---|---|
-| 4.1 | 首启向导 | 三步：填 gateway 地址 → **测连通**（调 `models` 并展示别名）→ 选 `file_roots`；现有首启引导条（Launcher 顶部）作为轻量兜底 |
-| 4.2 | token / 成本可见 | 从网关响应的 `usage` 字段累计；`UsageStore` 目前只记命令 MRU，扩展为「按会话/按天」统计，Settings 展示 |
-| 4.3 | 用户文档 | 新增 `docs/guide.md`：安装、首次配置、命令参考、隐私与安全边界、常见问题（README 保持概览定位） |
-| 4.4 | 更新与回滚说明 | 版本升级、配置备份（`userData` 目录说明）、数据清理 |
+| 4.1 | ✅ 首启向导 | 已落地（`specs/first-run.md`）：零上游时一键检测本机 Ollama（无需密钥）或手填上游 → 写配置 → 拉起；`file_roots` 由 Launcher 引导选择。**与原设想不同**：不再让用户填 gateway 地址（那是本地固定值，见阶段一 C 项） |
+| 4.2 | ⏸ token / 成本可见 | 从网关响应的 `usage` 字段累计；`UsageStore` 目前只记命令 MRU，扩展为「按会话/按天」统计，Settings 展示 |
+| 4.3 | ✅ 用户文档 | `docs/guide.md` 已落地：安装、首次配置、命令参考、隐私与安全边界、常见问题（README 保持概览定位） |
+| 4.4 | ✅ 更新与回滚说明 | 版本升级、配置备份（`userData` 目录说明）、数据清理 |
 
 **验收**：在一台**干净机器**（无 node_modules、无既有 config）上走通：安装 → 向导 → 首个命令 → agent 对话。
 
@@ -133,7 +135,7 @@ npm run test && npm run test:golden
 
 | 约束 | 影响 | 应对 |
 |---|---|---|
-| **GitHub 通道不稳定**（DNS 解析失败 / release 对象 0 字节） | Electron 二进制与 `dmg-builder` 等辅助二进制默认从 GitHub 拉取 → 构建卡死 | 已用 `electronDownload.mirror` 指向 npmmirror；`dmg-builder` 无镜像 → dmg 暂缓（见阶段一） |
+| **GitHub 通道不稳定**（DNS 解析失败 / release 对象 0 字节） | Electron 二进制默认从 GitHub 拉取 → 构建卡死 | 已用 `electronDownload.mirror` 指向 npmmirror；dmg 辅助包**已绕开**（改用系统自带 `hdiutil`） |
 | Apple 签名/公证需付费开发者账号 | 未签名分发的用户会遇 Gatekeeper 拦截 | 阶段 1.5 前置确认；未签名则在用户文档明确说明 |
 | UI e2e 只能在 macOS runner | CI 成本高 | 拆分 job，ui-e2e 仅在必要时触发（阶段二） |
 | 沙箱为 macOS 独有 | 跨平台安全边界不等价 | 能力探测 + 显式拒绝（阶段五） |
@@ -147,7 +149,7 @@ npm run test && npm run test:golden
 | 版本 | 里程碑 | 判定 |
 |---|---|---|
 | `0.1.0` | 当前（MVP 结束） | — |
-| `0.5.0` | 阶段一 + 二完成 | 能给自己装、有 CI 门禁（**阶段一主体已完成**，待签名 + CI） |
+| `0.5.0` | 阶段一 + 二完成 | **已发布**：能给自己装、有 CI 门禁（签名仍待账号） |
 | `0.9.0` | 阶段三完成 | 可连续日用、数据可迁移 |
 | `1.0.0` | 阶段四完成 | 他人可独立安装使用（仍限 macOS） |
 | `1.x` | 阶段五完成 | 跨平台 |

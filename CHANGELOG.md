@@ -10,7 +10,7 @@
 - **阶段三** 健壮性：gateway 重试退避、错误分类、grep 异步化、配置数据版本与迁移
 - **阶段四** 产品化：token/成本可见、用户文档（`docs/guide.md`）
 - **阶段五** 跨平台：`System` 抽象落地、沙箱按平台降级
-- 代码签名与公证（待自备 Apple Developer 账号）；`.dmg` 产物
+- 代码签名与公证（待自备 Apple Developer 账号）
 
 详见 [docs/roadmap.md](docs/roadmap.md)。
 
@@ -20,7 +20,7 @@
 
 ### 新增
 - **自包含**：内嵌 gateway 服务端二进制（`Contents/Resources/gateway/`），cTools 直接拉起，不再需要用户预装任何东西；配置由 cTools 自持于 `<userData>/gateway.yaml`，首启自动从既有 gw 配置迁移
-- **打包分发**：electron-builder 产出 `.zip`（arm64 + x64）、应用图标、`CHANGELOG`
+- **打包分发**：`.dmg` 与 `.zip`（arm64 + x64）、应用图标、`CHANGELOG`；`.dmg` 用系统自带 `hdiutil` 制作，不依赖需从 GitHub 下载的 dmg 辅助包
 - **首启向导**：零上游时一键检测本机 Ollama（无需密钥）或手填上游，一步配好并启动
 - **网关配置编辑**：设置里直接改 `providers` / `aliases`（备份 + 校验 + 原子写），改完热更或重启
 - **模型分配**：默认模型之外，固定场景（如翻译）可各用各的别名

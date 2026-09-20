@@ -27,16 +27,22 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
 
-      # arm64 + x64 两个架构的 zip（electron-builder 配置里已声明）
-      - name: 打包
-        run: npm run build && npx electron-builder --mac --publish never
+      - name: 打包（zip + dmg）
+        run: |
+          npm run build
+          # zip + blockmap（为将来的自动更新留底）
+          npx electron-builder --mac --arm64 --x64 --publish never
+          # .app 供 dmg 使用；dmg 用系统自带 hdiutil 制作，不依赖 electron-builder 的 dmg target
+          # （那个 target 要从 GitHub Releases 下载 dmgbuild 辅助包，网络受限环境拉不下来）
+          npx electron-builder --mac --arm64 --x64 --dir --publish never
+          node scripts/make-dmg.mjs arm64 x64
 
       - name: 收集产物摘要
         id: sums
         run: |
           echo "## 产物校验" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          shasum -a 256 dist/*.zip >> "$GITHUB_STEP_SUMMARY"
+          shasum -a 256 dist/*.zip dist/*.dmg >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       # 用 runner 自带的 gh CLI 而非第三方 action：少一个供应链依赖
@@ -48,4 +54,4 @@ jobs:
             --draft \
             --title "cTools ${GITHUB_REF_NAME}" \
             --notes-file .github/RELEASE_NOTES.md \
-            dist/*.zip dist/*.blockmap
+            dist/*.zip dist/*.dmg dist/*.blockmap

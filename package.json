@@ -16,7 +16,7 @@
     "command:new": "node scripts/new-command.mjs",
     "icon": "node scripts/make-icon.mjs",
     "dist": "npm run verify:gateway && npm run build && electron-builder --mac --publish never",
-    "dist:dmg": "npm run verify:gateway && npm run build && electron-builder --mac dmg zip --publish never",
+    "dist:dmg": "npm run verify:gateway && npm run build && electron-builder --mac --dir --publish never && node scripts/make-dmg.mjs",
     "dist:dir": "npm run verify:gateway && npm run build && electron-builder --mac --dir --publish never",
     "verify:gateway": "node scripts/verify-gateway-bin.mjs"
   },

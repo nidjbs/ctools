@@ -5,10 +5,10 @@
 
 | 你的 Mac | 文件 |
 |---|---|
-| Apple 芯片（M 系列） | `cTools-*-arm64-mac.zip` |
-| Intel | `cTools-*-mac.zip` |
+| Apple 芯片（M 系列） | `cTools-*-arm64.dmg`（或 `cTools-*-arm64-mac.zip`） |
+| Intel | `cTools-*-x64.dmg`（或 `cTools-*-mac.zip`） |
 
-解压后把 `cTools.app` 拖进「应用程序」。
+`.dmg`：打开后把 `cTools.app` 拖进「应用程序」。`.zip`：解压后同样拖入。
 
 ## ⚠️ 未签名，首次打开需手动放行
 
