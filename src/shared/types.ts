@@ -176,6 +176,8 @@ export interface Ctx {
 }
 
 export interface AppConfig {
+  /** 配置结构版本；改结构就 +1 并在 main/config.ts 补迁移。 */
+  schemaVersion?: number
   gatewayUrl: string
   adminUrl: string
   adminToken?: string

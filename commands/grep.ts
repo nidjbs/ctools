@@ -1,6 +1,7 @@
 // grep：在文件内容里按模式搜索（自实现遍历，不依赖 Spotlight 索引）。只读 → 可入 plan 工具集。
 // specs/grep.md。
-import { readdirSync, readFileSync, statSync, type Dirent } from 'node:fs'
+import { readdir, readFile, stat } from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Command, Ctx } from '../src/shared/types'
 import { realInside } from '../src/main/pathGuard'
@@ -26,12 +27,15 @@ function globRe(glob: string): RegExp {
   return new RegExp(`^${escaped}$`, 'i')
 }
 
-/** 递归收集候选文件（不跟随符号链接 → 天然避免目录环）。 */
-function collect(dir: string, glob: string | undefined, out: string[], depth = 0): void {
+/**
+ * 递归收集候选文件（不跟随符号链接 → 天然避免目录环）。
+ * **异步**：同步遍历会阻塞主进程（UI 冻结），这里每个目录/文件的 IO 都让出事件循环。
+ */
+async function collect(dir: string, glob: string | undefined, out: string[], depth = 0): Promise<void> {
   if (depth > MAX_DEPTH || out.length >= MAX_FILES) return
   let entries: Dirent[]
   try {
-    entries = readdirSync(dir, { withFileTypes: true })
+    entries = await readdir(dir, { withFileTypes: true })
   } catch {
     return // 不可读目录跳过
   }
@@ -39,7 +43,7 @@ function collect(dir: string, glob: string | undefined, out: string[], depth = 0
     if (out.length >= MAX_FILES) return
     if (e.isDirectory()) {
       if (SKIP_DIRS.has(e.name)) continue
-      collect(join(dir, e.name), glob, out, depth + 1)
+      await collect(join(dir, e.name), glob, out, depth + 1)
     } else if (e.isFile()) {
       if (e.name === '.DS_Store') continue
       if (glob && !globRe(glob).test(e.name)) continue
@@ -100,7 +104,7 @@ export const grepCmd: Command = {
     const test = matcher(pattern, ignoreCase)
 
     const files: string[] = []
-    for (const r of roots) collect(r, glob, files)
+    for (const r of roots) await collect(r, glob, files)
 
     const hits: Hit[] = []
     let scanned = 0
@@ -108,9 +112,9 @@ export const grepCmd: Command = {
       scanned++
       let content: string
       try {
-        const st = statSync(f)
+        const st = await stat(f)
         if (!st.isFile() || st.size > MAX_FILE_BYTES) continue
-        content = readFileSync(f, 'utf-8')
+        content = await readFile(f, 'utf-8')
       } catch {
         continue // 不可读/瞬时消失 → 跳过
       }
