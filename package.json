@@ -15,9 +15,10 @@
     "test:all": "npm run test && npm run test:ui",
     "command:new": "node scripts/new-command.mjs",
     "icon": "node scripts/make-icon.mjs",
-    "dist": "npm run build && electron-builder --mac --publish never",
-    "dist:dmg": "npm run build && electron-builder --mac dmg zip --publish never",
-    "dist:dir": "npm run build && electron-builder --mac --dir --publish never"
+    "dist": "npm run verify:gateway && npm run build && electron-builder --mac --publish never",
+    "dist:dmg": "npm run verify:gateway && npm run build && electron-builder --mac dmg zip --publish never",
+    "dist:dir": "npm run verify:gateway && npm run build && electron-builder --mac --dir --publish never",
+    "verify:gateway": "node scripts/verify-gateway-bin.mjs"
   },
   "build": {
     "appId": "com.ctools.app",
@@ -33,8 +34,8 @@
     ],
     "extraResources": [
       {
-        "from": "resources/gateway",
-        "to": "gateway"
+        "from": "resources/gateway/darwin-${arch}",
+        "to": "gateway/darwin-${arch}"
       }
     ],
     "asar": true,

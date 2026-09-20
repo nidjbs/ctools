@@ -25,6 +25,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # 约 83MB 的内嵌二进制必须可审计：确认仓库里的就是 checksums.txt 记录的那一份
+      - name: 校验内嵌 gateway 二进制
+        run: npm run verify:gateway
       - name: typecheck
         run: npm run typecheck
       - name: 单测 + 运行时 e2e
