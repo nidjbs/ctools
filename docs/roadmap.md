@@ -17,7 +17,7 @@
 | 上下文工程（token 计量、环境注入、摘要+合并、大结果外置） | `specs/context.md`、`specs/system-prompt.md` |
 | 工具面（file 全套 + `file_edit` + `grep` + `find_file` + `office_read` + `bash` + `web_search` + 记忆 + `ask`） | `specs/file-*.md`、`specs/grep.md`、`specs/ask.md` |
 | 安全模型（file_roots + realpath 守卫 + OS 沙箱禁网 + confirm 闸门 + 白名单兜底） | `specs/bash.md`、`specs/file-tools.md`、`tests/pathGuard.test.ts`、`tests/shellSandbox.test.ts` |
-| 四层测试：单测 / 运行时 e2e / **黄金集** / UI e2e | `npm run test` 共 **353**（其中黄金集 22，可单跑 `npm run test:golden`）· `npm run test:ui` **35** |
+| 四层测试：单测 / 运行时 e2e / **黄金集** / UI e2e | `npm run test` 共 **370** · `npm run test:ui` **37** |
 
 **当前版本**：`package.json` `0.5.0`（首个可分发版本）。**定位**：macOS 个人工具，已自包含 gateway、未签名。
 
@@ -80,7 +80,7 @@ CTOOLS_USER_DATA=/tmp/u /tmp/x/cTools.app/Contents/MacOS/cTools   # 启动存活
 
 ---
 
-## 阶段三：稳定日用（健壮性 / 性能）—— 主体完成
+## 阶段三：稳定日用（健壮性 / 性能）—— 已完成
 
 **目标**：连续日用不掉链子。
 
@@ -88,10 +88,10 @@ CTOOLS_USER_DATA=/tmp/u /tmp/x/cTools.app/Contents/MacOS/cTools   # 启动存活
 |---|---|---|
 | 3.1 | ✅ gateway 重试与退避 | **只对幂等请求**（`models`、非流式 `chat`）重试（指数退避 + 抖动）；4xx 不重试。**流式请求不盲目重试**——首个 SSE chunk 到达后可能已产生副作用或计费 |
 | 3.2 | ✅ 错误分类与呈现 | 区分「网络不可达 / 认证失败 / 模型不存在 / 上游 5xx」，给出可操作提示（而非统一 `执行失败: <原始错误>`） |
-| 3.3 | ✅ grep 异步化 | `readdirSync`/`readFileSync` 改 `fs/promises`，分批 `await` 让出事件循环 + 支持 `AbortSignal`。**当前实现同步遍历会阻塞主进程**（5000 文件上限只是兜底） |
+| 3.3 | ✅ grep 异步化 | `readdirSync`/`readFileSync` 改 `fs/promises`，分批 `await` 让出事件循环（**AbortSignal 未做**：没有取消入口，暂不需要）。**当前实现同步遍历会阻塞主进程**（5000 文件上限只是兜底） |
 | 3.4 | ✅ 数据版本与迁移 | `config.json` 加 `schemaVersion` + 迁移函数；`sessions/`（事件溯源）天然向后兼容，无需迁移 |
-| 3.5 | ⏸ 会话文件完整性 | 启动/加载时校验 JSONL 末行完整性（崩溃可能留下半行）；坏行跳过策略已有（`listSessions`），补齐 `fromJSONL` |
-| 3.6 | ⏸ 长会话可用性 | 验证多轮长会话下压缩/摘要的实际表现（现有单测+黄金集覆盖语义，缺**真实长会话**观测） |
+| 3.5 | ✅ 会话文件完整性 | 启动/加载时校验 JSONL 末行完整性（崩溃可能留下半行）；坏行跳过策略已有（`listSessions`），补齐 `fromJSONL` |
+| 3.6 | ✅ 长会话可用性 | 验证多轮长会话下压缩/摘要的实际表现（现有单测+黄金集覆盖语义，缺**真实长会话**观测） |
 
 **验收**
 ```sh
@@ -102,14 +102,14 @@ npm run test && npm run test:golden
 
 ---
 
-## 阶段四：产品化（首启 / 成本可见 / 文档）—— 部分完成
+## 阶段四：产品化（首启 / 成本可见 / 文档）—— 已完成
 
 **目标**：他人拿到也能装起来用。
 
 | # | 任务 | 说明 |
 |---|---|---|
 | 4.1 | ✅ 首启向导 | 已落地（`specs/first-run.md`）：零上游时一键检测本机 Ollama（无需密钥）或手填上游 → 写配置 → 拉起；`file_roots` 由 Launcher 引导选择。**与原设想不同**：不再让用户填 gateway 地址（那是本地固定值，见阶段一 C 项） |
-| 4.2 | ⏸ token / 成本可见 | 从网关响应的 `usage` 字段累计；`UsageStore` 目前只记命令 MRU，扩展为「按会话/按天」统计，Settings 展示 |
+| 4.2 | ✅ token / 成本可见 | 从网关响应的 `usage` 字段累计；`UsageStore` 目前只记命令 MRU，扩展为「按会话/按天」统计，Settings 展示 |
 | 4.3 | ✅ 用户文档 | `docs/guide.md` 已落地：安装、首次配置、命令参考、隐私与安全边界、常见问题（README 保持概览定位） |
 | 4.4 | ✅ 更新与回滚说明 | 版本升级、配置备份（`userData` 目录说明）、数据清理 |
 

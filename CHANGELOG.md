@@ -7,10 +7,9 @@
 ## [Unreleased]
 
 ### 计划中
-- **阶段三** 健壮性：gateway 重试退避、错误分类、grep 异步化、配置数据版本与迁移
-- **阶段四** 产品化：token/成本可见、用户文档（`docs/guide.md`）
 - **阶段五** 跨平台：`System` 抽象落地、沙箱按平台降级
 - 代码签名与公证（待自备 Apple Developer 账号）
+- 自动更新（zip + blockmap 已就绪，接 `electron-updater` 即可）
 
 详见 [docs/roadmap.md](docs/roadmap.md)。
 
