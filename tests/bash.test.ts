@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bashCmd } from '../commands/bash'
 import { Registry } from '../src/main/registry'
+import { HAS_SANDBOX, SANDBOX_SKIP_REASON } from './helpers/platform'
 import type { AppConfig, Ctx } from '../src/shared/types'
 
 let root: string
@@ -29,7 +30,8 @@ describe('bash 确认门', () => {
     expect(r).toMatchObject({ type: 'confirm', message: expect.stringContaining('echo hi') })
   })
 
-  it('批准后执行并回显输出', async () => {
+  // 默认路径经 sandbox-exec 禁网 → 仅 macOS 可执行（其它平台按设计拒绝，见 specs/bash.md）
+  it.skipIf(!HAS_SANDBOX)(`批准后执行并回显输出（${SANDBOX_SKIP_REASON}）`, async () => {
     const r = await bashCmd.run('echo ctools-bash-ok', { ...ctx, confirmApproved: true })
     expect(r.type).toBe('text')
     if (r.type === 'text') {
@@ -38,10 +40,21 @@ describe('bash 确认门', () => {
     }
   })
 
-  it('非零退出码回显', async () => {
+  it.skipIf(!HAS_SANDBOX)(`非零退出码回显（${SANDBOX_SKIP_REASON}）`, async () => {
     const r = await bashCmd.run('echo oops >&2; exit 3', { ...ctx, confirmApproved: true })
     expect(r.type).toBe('text')
     if (r.type === 'text') expect(r.text).toContain('退出码 3')
+  })
+
+  // 关掉禁网（bashNetwork=true）时不走沙箱 —— 这条在任何平台都该成立
+  it('bashNetwork=true 时不走沙箱，命令可直接执行（全平台）', async () => {
+    const netCtx: Ctx = { ...ctx, config: { ...ctx.config, bashNetwork: true } }
+    const r = await bashCmd.run('echo ctools-nosandbox-ok', { ...netCtx, confirmApproved: true })
+    expect(r.type).toBe('text')
+    if (r.type === 'text') {
+      expect(r.text).toContain('退出码 0')
+      expect(r.text).toContain('ctools-nosandbox-ok')
+    }
   })
 
   it('空参数用法提示', async () => {
@@ -57,7 +70,7 @@ describe('bash 确认门', () => {
 })
 
 describe('cwd 与 file_roots 一致（specs/bash.md）', () => {
-  it('cwd = file_roots[0]', async () => {
+  it.skipIf(!HAS_SANDBOX)(`cwd = file_roots[0]（${SANDBOX_SKIP_REASON}）`, async () => {
     const r = await bashCmd.run('pwd', { ...ctx, confirmApproved: true })
     expect(r.type).toBe('text')
     if (r.type === 'text') expect(r.text).toContain(root)
