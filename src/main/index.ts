@@ -344,11 +344,32 @@ app.whenReady().then(async () => {
     if (s === 'running') await reconcileDefaultAlias(ctx)
     return s
   })
+  // 首启向导：探测本机 Ollama（仅本机地址，超时 3s）。specs/first-run.md
+  ipcMain.handle('gateway:probeOllama', async () => {
+    const base = (process.env['OLLAMA_BASE_URL'] || 'http://localhost:11434').replace(/\/+$/, '')
+    try {
+      const res = await fetch(`${base}/v1/models`, { signal: AbortSignal.timeout(3000) })
+      if (!res.ok) return { ok: false, baseUrl: base, models: [], error: `HTTP ${res.status}` }
+      const data = (await res.json()) as { data?: { id?: string }[] }
+      return { ok: true, baseUrl: base, models: (data.data ?? []).map((m) => String(m.id ?? '')).filter(Boolean) }
+    } catch (e) {
+      return { ok: false, baseUrl: base, models: [], error: (e as Error).message }
+    }
+  })
   // 网关配置（providers / aliases）：读 + 写回（备份/校验/原子写）+ 应用。specs/gateway-config.md
   ipcMain.handle('gateway:config', () => readGwFile(gateway.gwConfigFile()))
   ipcMain.handle('gateway:configSave', async (_e, input: GwSaveInput, apply: 'reload' | 'restart') => {
     const r = writeGwFile(gateway.gwConfigFile(), input)
     if (!r.ok) return r
+    // 网关没在跑（首启零上游时从未启动过）→ 保存即拉起：此时 HTTP 都连不上，谈不上 reload。
+    if ((await gateway.status()) === 'stopped') {
+      const s = await gateway.ensureStarted()
+      return {
+        ...r,
+        applied: s === 'running',
+        ...(s === 'running' ? {} : { applyError: gateway.lastError() ?? '启动失败' }),
+      }
+    }
     // 配置已落盘：即便应用失败也要如实告知（避免用户以为「没生效=没保存」）
     if (apply === 'reload') {
       const a = await gateway.reload()

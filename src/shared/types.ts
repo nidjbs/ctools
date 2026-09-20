@@ -260,6 +260,8 @@ export interface CtoolsApi {
     reload(): Promise<{ ok: boolean; error?: string }>
     restart(): Promise<'running' | 'stopped'>
     ensure(): Promise<'running' | 'stopped'>
+    /** 探测本机 Ollama（首启向导用）。specs/first-run.md。 */
+    probeOllama(): Promise<{ ok: boolean; baseUrl: string; models: string[]; error?: string }>
     /** 读网关配置文件的 providers / aliases。见 specs/gateway-config.md。 */
     config(): Promise<GwConfigView>
     /** 写回 providers / aliases（备份 + 校验 + 原子写）；apply=reload 热更 / restart 重启。 */

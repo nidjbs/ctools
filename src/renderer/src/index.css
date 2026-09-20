@@ -392,6 +392,15 @@ body {
   color: #e8c566;
 }
 
+/* 首启向导：零上游时置顶显示，视觉上区别于普通分区 */
+.settings .firstrun {
+  border-color: #4a3f7a;
+  background: #26243a;
+}
+.settings .firstrun h2 {
+  color: #b9a9ff;
+}
+
 /* 网关配置编辑：providers / aliases 行式表单 */
 .settings h3.sub {
   font-size: 13px;

@@ -4,6 +4,153 @@ import { useEffect, useRef, useState } from 'react'
 import type { AppConfig, CommandMeta, GwConfigView, MemoryMeta } from '../../shared/types'
 import { MODEL_SCENARIOS } from '../../shared/model'
 
+/**
+ * 首启向导（specs/first-run.md）：仅在零上游时出现 —— 此时 gateway 起不来，用户需要「一步配好」。
+ * 优先一键用本机 Ollama（不需要任何密钥），否则手填一个上游。
+ */
+function FirstRunGuide({ onDone }: { onDone: () => void }) {
+  const [probe, setProbe] = useState<{ ok: boolean; baseUrl: string; models: string[]; error?: string } | null>(null)
+  const [probing, setProbing] = useState(false)
+  const [model, setModel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [manual, setManual] = useState({ name: 'my', baseUrl: '', apiKeyEnv: '', model: '', alias: 'chat' })
+
+  async function detect() {
+    setProbing(true)
+    setMsg(null)
+    try {
+      const r = await window.api.gateway.probeOllama()
+      setProbe(r)
+      setModel(r.models[0] ?? '')
+      if (!r.ok) setMsg({ kind: 'err', text: `未检测到本机 Ollama（${r.error ?? '不可达'}）——可在下方手动配置上游` })
+    } finally {
+      setProbing(false)
+    }
+  }
+
+  /** 写入一个上游 + 一个别名，并把默认别名指过去；网关未运行时会被一并拉起。 */
+  async function apply(provider: { name: string; baseUrl: string; apiKeyEnv?: string }, model: string, alias: string) {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const r = await window.api.gateway.configSave(
+        {
+          providers: {
+            [provider.name]: {
+              type: 'openai',
+              base_url: provider.baseUrl,
+              ...(provider.apiKeyEnv ? { api_key_env: provider.apiKeyEnv } : {}),
+            },
+          },
+          aliases: { [alias]: { provider: provider.name, model } },
+        },
+        'reload',
+      )
+      if (!r.ok) setMsg({ kind: 'err', text: r.error ?? '保存失败' })
+      else if (r.applied) {
+        await window.api.config.update({ defaultAlias: alias })
+        setMsg({ kind: 'ok', text: `已配置并启动 ✓（默认模型别名 = ${alias}）` })
+        // 延迟收起：立刻 onDone() 会让本组件卸载，用户根本看不到上面的确认
+        setTimeout(onDone, 2500)
+      } else setMsg({ kind: 'err', text: `已写入配置，但网关未起来：${r.applyError ?? ''}` })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="firstrun">
+      <h2>快速开始</h2>
+      <p className="hint">
+        还没有任何模型上游，<b>网关无法启动</b>。配一个即可开始使用。
+      </p>
+
+      <h3 className="sub">① 用本机 Ollama（推荐，无需密钥）</h3>
+      <div className="row">
+        <button disabled={probing || busy} onClick={() => void detect()}>
+          {probing ? '检测中…' : '检测本机 Ollama'}
+        </button>
+        {probe?.ok && probe.models.length > 0 && (
+          <>
+            <select className="bar" value={model} onChange={(e) => setModel(e.target.value)}>
+              {probe.models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <button
+              className="primary"
+              disabled={busy || !model}
+              onClick={() => void apply({ name: 'ollama', baseUrl: `${probe.baseUrl}/v1` }, model, 'chat')}
+            >
+              使用它
+            </button>
+          </>
+        )}
+        {probe?.ok && probe.models.length === 0 && <span className="dim">Ollama 可达，但没有已安装的模型</span>}
+      </div>
+
+      <h3 className="sub">② 或者手动配置一个上游</h3>
+      <div className="grid">
+        <label>
+          上游名
+          <input className="bar" value={manual.name} onChange={(e) => setManual({ ...manual, name: e.target.value })} />
+        </label>
+        <label className="wide">
+          base_url
+          <input
+            className="bar"
+            placeholder="https://api.example.com/v1"
+            value={manual.baseUrl}
+            onChange={(e) => setManual({ ...manual, baseUrl: e.target.value })}
+          />
+        </label>
+        <label>
+          模型名
+          <input className="bar" value={manual.model} onChange={(e) => setManual({ ...manual, model: e.target.value })} />
+        </label>
+        <label>
+          别名
+          <input className="bar" value={manual.alias} onChange={(e) => setManual({ ...manual, alias: e.target.value })} />
+        </label>
+        <label className="wide">
+          api_key_env（环境变量名，可留空）
+          <input
+            className="bar"
+            placeholder="OPENAI_API_KEY"
+            value={manual.apiKeyEnv}
+            onChange={(e) => setManual({ ...manual, apiKeyEnv: e.target.value })}
+          />
+          {/* 这个坑必须写在输入框旁：gateway 从「自己的环境」读该变量 */}
+          <span className="hint">
+            注意：gateway 读的是<b>它自己进程</b>的环境变量，而从程序坞/访达启动的 app <b>不会加载 ~/.zshrc</b>。
+            从终端启动可见；否则需 <code>launchctl setenv {manual.apiKeyEnv || 'VAR'} 你的密钥</code>。本机 Ollama 不需要密钥。
+          </span>
+        </label>
+      </div>
+      <div className="row">
+        <button
+          className="primary"
+          disabled={busy || !manual.baseUrl.trim() || !manual.model.trim() || !manual.name.trim() || !manual.alias.trim()}
+          onClick={() =>
+            void apply(
+              { name: manual.name.trim(), baseUrl: manual.baseUrl.trim(), apiKeyEnv: manual.apiKeyEnv.trim() },
+              manual.model.trim(),
+              manual.alias.trim(),
+            )
+          }
+        >
+          配置并启动
+        </button>
+        {busy && <span className="dim">处理中…</span>}
+      </div>
+      {msg && <div className={`notice ${msg.kind}`}>{msg.text}</div>}
+    </section>
+  )
+}
+
 /** providers / aliases 编辑区（specs/gateway-config.md）。 */
 function GwConfigSection() {
   const [gw, setGw] = useState<GwConfigView | null>(null)
@@ -212,6 +359,7 @@ export default function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null)
   const [cmds, setCmds] = useState<CommandMeta[]>([])
   const [mems, setMems] = useState<MemoryMeta[]>([])
+  const [gwEmpty, setGwEmpty] = useState(false) // 零上游 → 显示首启向导（specs/first-run.md）
   const [status, setStatus] = useState<'running' | 'stopped'>('stopped')
   const [models, setModels] = useState<string[]>([])
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
@@ -230,6 +378,8 @@ export default function Settings() {
     setStatus(s)
     setMems(await window.api.memory.list().catch(() => []))
     setModels(await window.api.gateway.models().catch(() => []))
+    const gw = await window.api.gateway.config().catch(() => null)
+    setGwEmpty(!!gw && Object.keys(gw.providers).length === 0)
   }
 
   useEffect(() => {
@@ -450,6 +600,7 @@ export default function Settings() {
         </div>
       </section>
 
+      {gwEmpty && <FirstRunGuide onDone={() => void refresh()} />}
       <GwConfigSection />
 
       <section>

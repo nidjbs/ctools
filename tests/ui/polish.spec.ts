@@ -393,6 +393,38 @@ test('agent 提问（ask）：Chat 内出现提问条，回答后回填并继续
   }
 })
 
+test('首启向导：零上游时出现 → 手动配置 → 落盘并消失', async () => {
+  const l = await launchApp({}) // 夹具 gw 源为空 → 零上游
+  try {
+    const settings = await openSettings(l)
+    const guide = settings.locator('section.firstrun')
+    await expect(guide).toBeVisible({ timeout: 15_000 })
+    await expect(guide).toContainText('网关无法启动')
+    await expect(guide.locator('button', { hasText: '检测本机 Ollama' })).toBeVisible()
+
+    // 手动路径（无需打桩探测）
+    await guide.locator('label', { hasText: '上游名' }).locator('input').fill('ds')
+    await guide.locator('label', { hasText: 'base_url' }).locator('input').fill('https://api.deepseek.com/v1')
+    await guide.locator('label', { hasText: '模型名' }).locator('input').fill('deepseek-v4-flash')
+    // api_key_env 旁的提示必须写明「GUI 启动不加载 ~/.zshrc」这个坑
+    await expect(guide).toContainText('launchctl setenv')
+    await guide.locator('button', { hasText: '配置并启动' }).click()
+    await expect(guide.locator('.notice')).toContainText('已配置并启动', { timeout: 15_000 })
+
+    // 落盘到 cTools 自持配置；默认别名被指到新建的别名
+    const doc = (await import('js-yaml')).load(readFileSync(join(l.userData, 'gateway.yaml'), 'utf-8')) as Record<string, any>
+    expect(doc.providers.ds.base_url).toBe('https://api.deepseek.com/v1')
+    expect(doc.aliases.chat).toEqual({ provider: 'ds', model: 'deepseek-v4-flash' })
+    const cfg = JSON.parse(readFileSync(join(l.userData, 'config.json'), 'utf-8'))
+    expect(cfg.defaultAlias).toBe('chat')
+
+    // 有上游后向导消失
+    await expect(settings.locator('section.firstrun')).toHaveCount(0, { timeout: 10_000 })
+  } finally {
+    await l.cleanup()
+  }
+})
+
 test('设置：模型分配区（默认 + 各场景）；连接区默认折叠但在高级里', async () => {
   const l = await launchApp({})
   try {
