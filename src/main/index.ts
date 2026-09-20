@@ -18,7 +18,8 @@ import { UsageStore } from './usage'
 import { ChatManager, ChatIO } from './chat'
 import { ClipboardStore, startClipboardWatch } from './clipboard'
 import { listSaves, saveCommand, removeSave, distillDraft, type DraftMeta } from './saves'
-import { readGwFile, writeGwFile } from './gwFile'
+import { readGwFile, writeGwFile, setUsageSink } from './gwFile'
+import { usageReport } from './gatewayUsage'
 import { ensureGatewayConfig } from './gatewayHome'
 import { randomUUID } from 'node:crypto'
 import { listSessions } from './session'
@@ -355,6 +356,24 @@ app.whenReady().then(async () => {
     } catch (e) {
       return { ok: false, baseUrl: base, models: [], error: (e as Error).message }
     }
+  })
+  // 用量（token / 成本）：数据取自网关自身的 /admin/usage/*。specs/gateway-usage.md
+  ipcMain.handle('gateway:usage', async (_e, range: 'today' | '7d' | '30d') => {
+    const days = range === 'today' ? 1 : range === '7d' ? 7 : 30
+    const to = new Date()
+    const from = new Date(to.getTime() - days * 24 * 3600 * 1000)
+    const aliases = await ctx.gateway.models().catch(() => [])
+    return usageReport(
+      { adminUrl: ctx.config.adminUrl, token: ctx.config.adminToken ?? '', from, to },
+      aliases,
+    )
+  })
+  ipcMain.handle('gateway:enableUsage', async () => {
+    const r = setUsageSink(gateway.gwConfigFile(), join(userData, 'usage.db'))
+    if (!r.ok) return r
+    // usage sink 只影响启动期装配 → 必须重启（reload 改不动）
+    const s = await gateway.restart()
+    return { ...r, applied: s === 'running', ...(s === 'running' ? {} : { applyError: gateway.lastError() ?? '重启失败' }) }
   })
   // 网关配置（providers / aliases）：读 + 写回（备份/校验/原子写）+ 应用。specs/gateway-config.md
   ipcMain.handle('gateway:config', () => readGwFile(gateway.gwConfigFile()))

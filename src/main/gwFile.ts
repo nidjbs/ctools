@@ -134,34 +134,25 @@ export function readGwFile(path: string): GwConfigView {
   }
 }
 
-/**
- * 写回 providers / aliases：校验 → 备份 → 合并（保留其余键）→ 再校验 → 原子写。
- * 见 specs/gateway-config.md。
- */
-export function writeGwFile(path: string, input: GwSaveInput): GwSaveResult {
-  const invalid = validateGwConfig(input)
-  if (invalid) return { ok: false, error: invalid }
-
-  // 以磁盘当前内容为基线合并，避免丢掉 listen/auth 等未知键
-  let base: Record<string, unknown> = {}
-  if (existsSync(path)) {
-    try {
-      base = asRecord(load(readFileSync(path, 'utf-8')))
-    } catch (e) {
-      return { ok: false, error: `现有配置无法解析，已拒绝写入：${(e as Error).message}` }
-    }
+/** 读现有配置为基线；不存在或损坏时返回 null（损坏时不允许覆盖）。 */
+function readBase(path: string): { base: Record<string, unknown> } | { error: string } {
+  if (!existsSync(path)) return { base: {} }
+  try {
+    return { base: asRecord(load(readFileSync(path, 'utf-8'))) }
+  } catch (e) {
+    return { error: `现有配置无法解析，已拒绝写入：${(e as Error).message}` }
   }
-  const next = { ...base, providers: input.providers, aliases: input.aliases }
+}
 
-  // 写前再解析一次，确保产物是合法 YAML
+/** 备份 → 原子写（临时文件 + rename）。 */
+function commit(path: string, doc: Record<string, unknown>): GwSaveResult {
   let text: string
   try {
-    text = dump(next, { lineWidth: 120, noRefs: true })
-    load(text)
+    text = dump(doc, { lineWidth: 120, noRefs: true })
+    load(text) // 写前再解析一次，确保产物合法
   } catch (e) {
     return { ok: false, error: `生成配置失败：${(e as Error).message}` }
   }
-
   let backup: string | undefined
   try {
     if (existsSync(path)) {
@@ -176,4 +167,31 @@ export function writeGwFile(path: string, input: GwSaveInput): GwSaveResult {
     return { ok: false, error: `写入失败：${(e as Error).message}`, ...(backup ? { backup } : {}) }
   }
   return { ok: true, ...(backup ? { backup } : {}) }
+}
+
+/**
+ * 在托管配置里启用（或关闭）可查询的用量存储。
+ * 网关默认的 audit sink 不支持 /admin/usage/* 查询，只有 sqlite 之类可以。
+ */
+export function setUsageSink(path: string, dbPath: string | null): GwSaveResult {
+  const r = readBase(path)
+  if ('error' in r) return { ok: false, error: r.error }
+  const next = { ...r.base }
+  if (dbPath) next.usage = { driver: 'sqlite', options: { path: dbPath } }
+  else delete next.usage
+  return commit(path, next)
+}
+
+/**
+ * 写回 providers / aliases：校验 → 备份 → 合并（保留其余键）→ 再校验 → 原子写。
+ * 见 specs/gateway-config.md。
+ */
+export function writeGwFile(path: string, input: GwSaveInput): GwSaveResult {
+  const invalid = validateGwConfig(input)
+  if (invalid) return { ok: false, error: invalid }
+
+  // 以磁盘当前内容为基线合并，避免丢掉 listen/auth 等未知键
+  const r = readBase(path)
+  if ('error' in r) return { ok: false, error: r.error }
+  return commit(path, { ...r.base, providers: input.providers, aliases: input.aliases })
 }

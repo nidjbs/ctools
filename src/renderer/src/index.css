@@ -392,6 +392,36 @@ body {
   color: #e8c566;
 }
 
+/* 用量区的持久状态提示（区别于 .notice 那种操作结果） */
+.settings .usage-state {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #3a2228;
+  color: #ff9aa2;
+}
+
+/* 用量表：紧凑两/四列 */
+.settings table.usage {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.settings table.usage td,
+.settings table.usage th {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid #333;
+}
+.settings table.usage th {
+  color: #888;
+  font-weight: 500;
+}
+.settings table.usage td:nth-child(even) {
+  color: #eee;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 首启向导：零上游时置顶显示，视觉上区别于普通分区 */
 .settings .firstrun {
   border-color: #4a3f7a;

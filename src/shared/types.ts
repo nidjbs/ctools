@@ -110,6 +110,33 @@ export interface GwSaveResult {
   error?: string
 }
 
+// ---------- 网关用量（token / 成本）----------
+
+/** 网关自身的用量聚合（来自 /admin/usage/summary）。 */
+export interface GwUsageSummary {
+  requests: number
+  successes: number
+  failures: number
+  streaming: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  /** 微美元（网关按其定价表算出；未配置定价则为 0）。 */
+  costMicros: number
+  durationMs: number
+}
+
+export interface GwUsageReport {
+  ok: true
+  total: GwUsageSummary
+  byAlias: Array<{ alias: string; summary: GwUsageSummary }>
+}
+
+/** 用量查询结果。`unsupported` = 网关未启用可查询的 usage sink（需 sqlite）。 */
+export type GwUsageResult =
+  | GwUsageReport
+  | { ok: false; reason: 'unsupported' | 'auth' | 'error'; message: string }
+
 /** 记忆条目元数据（无正文，可经 IPC）。 */
 export interface MemoryMeta {
   id: string
@@ -264,6 +291,10 @@ export interface CtoolsApi {
     ensure(): Promise<'running' | 'stopped'>
     /** 探测本机 Ollama（首启向导用）。specs/first-run.md。 */
     probeOllama(): Promise<{ ok: boolean; baseUrl: string; models: string[]; error?: string }>
+    /** 用量聚合（token / 成本），数据取自网关自身。specs/gateway-usage.md。 */
+    usage(range: 'today' | '7d' | '30d'): Promise<GwUsageResult>
+    /** 在托管配置里启用可查询的用量存储（sqlite），并应用。 */
+    enableUsage(): Promise<GwSaveResult & { applied?: boolean; applyError?: string }>
     /** 读网关配置文件的 providers / aliases。见 specs/gateway-config.md。 */
     config(): Promise<GwConfigView>
     /** 写回 providers / aliases（备份 + 校验 + 原子写）；apply=reload 热更 / restart 重启。 */

@@ -31,6 +31,8 @@ const api: CtoolsApi = {
     restart: handle('gateway:restart'),
     ensure: handle('gateway:ensure'),
     probeOllama: handle('gateway:probeOllama'),
+    usage: handle('gateway:usage'),
+    enableUsage: handle('gateway:enableUsage'),
     config: handle('gateway:config'),
     configSave: handle('gateway:configSave'),
   },

@@ -20,6 +20,11 @@ export interface MockBehavior {
   toolArgs?: string // toolName 的参数 JSON
   /** 首条内容 chunk 前的延迟（ms）——用于验证「挂载时首轮还在跑」的场景。 */
   firstDelayMs?: number
+  /**
+   * 用量聚合（/admin/usage/summary）。不给则返回 501 —— 与真实网关默认的 audit sink 一致
+   * （默认就是不可查询，所以「未启用」才是常态，UI 必须能处理）。
+   */
+  usage?: (alias?: string) => Record<string, number>
 }
 
 export interface Mock {
@@ -40,6 +45,17 @@ export async function startMock(beh: MockBehavior = {}): Promise<Mock> {
     if (req.method === 'GET' && url.pathname === '/v1/models') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ data: models.map((id) => ({ id })) }))
+      return
+    }
+    if (req.method === 'GET' && url.pathname === '/admin/usage/summary') {
+      if (!beh.usage) {
+        // 真实网关默认 sink 是 audit（不可查询）→ 501，这是最常见情形
+        res.writeHead(501, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'usage_query_unsupported' }))
+        return
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(beh.usage(url.searchParams.get('alias') ?? undefined)))
       return
     }
     if (req.method === 'POST' && url.pathname === '/admin/reload') {

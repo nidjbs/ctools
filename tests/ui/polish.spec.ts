@@ -425,6 +425,52 @@ test('首启向导：零上游时出现 → 手动配置 → 落盘并消失', a
   }
 })
 
+test('用量：网关未启用用量存储（501）→ 说明原因并可一键启用', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ctools-usageui-'))
+  const src = join(dir, 'gw-src.yaml')
+  writeFileSync(src, 'providers:\n  ds:\n    type: openai\n    base_url: https://api.deepseek.com\naliases:\n  chat:\n    provider: ds\n    model: m\n')
+  const l = await launchApp({ gwConfig: src })
+  try {
+    const settings = await openSettings(l)
+    const section = settings.locator('section', { has: settings.locator('h2', { hasText: '用量' }) })
+    // mock 网关对 /admin/usage/summary 返回 501（同网关默认的 audit sink）
+    await expect(section.locator('.usage-state')).toContainText('用量存储', { timeout: 15_000 })
+    await expect(section.locator('button', { hasText: '今天' })).toBeVisible()
+
+    await section.locator('button', { hasText: '启用用量统计' }).click()
+    // 写入托管配置（重启在 mock 下不成功，但配置必须已落盘）
+    await expect(section.locator('.usage-state')).toBeVisible({ timeout: 15_000 })
+    const doc = (await import('js-yaml')).load(readFileSync(join(l.userData, 'gateway.yaml'), 'utf-8')) as Record<string, any>
+    expect(doc.usage).toEqual({ driver: 'sqlite', options: { path: join(l.userData, 'usage.db') } })
+    expect(doc.providers.ds.base_url).toBe('https://api.deepseek.com') // 其它键未被动
+  } finally {
+    await l.cleanup()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('用量：网关已启用时展示 token 与成本，并按别名列出', async () => {
+  const behavior: MockBehavior = {
+    usage: (alias) =>
+      alias
+        ? { requests: 2, successes: 2, failures: 0, streaming: 2, input_tokens: 100, output_tokens: 50, total_tokens: 150, cost_micros: 20000, duration_ms: 300 }
+        : { requests: 5, successes: 4, failures: 1, streaming: 5, input_tokens: 900, output_tokens: 400, total_tokens: 1300, cost_micros: 50000, duration_ms: 900 },
+  }
+  const l = await launchApp({ behavior })
+  try {
+    const settings = await openSettings(l)
+    const section = settings.locator('section', { has: settings.locator('h2', { hasText: '用量' }) })
+    await expect(section.locator('table.usage').first()).toContainText('1,300', { timeout: 15_000 })
+    await expect(section.locator('table.usage').first()).toContainText('$0.0500') // 成本（微美元 → 美元）
+    // 明细里出现别名
+    await expect(section.locator('table.usage').nth(1)).toContainText('common')
+    // 失败数也要展示
+    await expect(section).toContainText('失败')
+  } finally {
+    await l.cleanup()
+  }
+})
+
 test('设置：模型分配区（默认 + 各场景）；连接区默认折叠但在高级里', async () => {
   const l = await launchApp({})
   try {

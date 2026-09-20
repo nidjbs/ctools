@@ -151,6 +151,133 @@ function FirstRunGuide({ onDone }: { onDone: () => void }) {
   )
 }
 
+/** 用量（token / 成本）：数据来自网关自身，cTools 只做展示。specs/gateway-usage.md。 */
+function UsageSection() {
+  const [range, setRange] = useState<'today' | '7d' | '30d'>('today')
+  const [res, setRes] = useState<import('../../shared/types').GwUsageResult | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = async (r: 'today' | '7d' | '30d') => {
+    setBusy(true)
+    try {
+      setRes(await window.api.gateway.usage(r))
+    } finally {
+      setBusy(false)
+    }
+  }
+  useEffect(() => {
+    void load(range)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function enable() {
+    setBusy(true)
+    try {
+      const r = await window.api.gateway.enableUsage()
+      if (r.ok && r.applied) await load(range)
+      else if (!r.ok) setRes({ ok: false, reason: 'error', message: r.error ?? '启用失败' })
+      else setRes({ ok: false, reason: 'error', message: r.applyError ?? '启用后网关未就绪' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const fmt = (n: number) => n.toLocaleString('en-US')
+  const cost = (micros: number) => (micros > 0 ? `$${(micros / 1_000_000).toFixed(4)}` : '—')
+
+  return (
+    <section>
+      <h2>用量</h2>
+      <div className="row">
+        {(['today', '7d', '30d'] as const).map((r) => (
+          <button
+            key={r}
+            className={r === range ? 'primary' : ''}
+            disabled={busy}
+            onClick={() => {
+              setRange(r)
+              void load(r)
+            }}
+          >
+            {r === 'today' ? '今天' : r === '7d' ? '近 7 天' : '近 30 天'}
+          </button>
+        ))}
+        <span className="gap" />
+        <button disabled={busy} onClick={() => void load(range)}>
+          刷新
+        </button>
+      </div>
+
+      {!res ? (
+        <div className="dim">加载中…</div>
+      ) : !res.ok ? (
+        <>
+          {/* 持久状态而非操作结果：用独立 class，避免与「保存/热更」那类临时通知混在一起 */}
+          <div className="usage-state">{res.message}</div>
+          {res.reason === 'unsupported' && (
+            <div className="row">
+              <button className="primary" disabled={busy} onClick={() => void enable()}>
+                启用用量统计（sqlite）并重启网关
+              </button>
+              <span className="hint">会在网关配置里写入 usage sink；需要重启才生效。</span>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <table className="usage">
+            <tbody>
+              <tr>
+                <td>请求</td>
+                <td>{fmt(res.total.requests)}</td>
+                <td>失败</td>
+                <td>{fmt(res.total.failures)}</td>
+              </tr>
+              <tr>
+                <td>输入 token</td>
+                <td>{fmt(res.total.inputTokens)}</td>
+                <td>输出 token</td>
+                <td>{fmt(res.total.outputTokens)}</td>
+              </tr>
+              <tr>
+                <td>合计 token</td>
+                <td>{fmt(res.total.totalTokens)}</td>
+                <td>成本</td>
+                <td>{cost(res.total.costMicros)}</td>
+              </tr>
+            </tbody>
+          </table>
+          {res.byAlias.length > 0 && (
+            <table className="usage">
+              <thead>
+                <tr>
+                  <th>别名</th>
+                  <th>请求</th>
+                  <th>token</th>
+                  <th>成本</th>
+                </tr>
+              </thead>
+              <tbody>
+                {res.byAlias.map((a) => (
+                  <tr key={a.alias}>
+                    <td>{a.alias}</td>
+                    <td>{fmt(a.summary.requests)}</td>
+                    <td>{fmt(a.summary.totalTokens)}</td>
+                    <td>{cost(a.summary.costMicros)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="hint">
+            数据来自网关自身的用量记录；成本为「—」表示网关未配置该模型的定价。
+          </p>
+        </>
+      )}
+    </section>
+  )
+}
+
 /** providers / aliases 编辑区（specs/gateway-config.md）。 */
 function GwConfigSection() {
   const [gw, setGw] = useState<GwConfigView | null>(null)
@@ -602,6 +729,7 @@ export default function Settings() {
 
       {gwEmpty && <FirstRunGuide onDone={() => void refresh()} />}
       <GwConfigSection />
+      <UsageSection />
 
       <section>
         <h2>连接（高级）</h2>
