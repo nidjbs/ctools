@@ -1,0 +1,51 @@
+name: Release
+
+# 推 v* 标签即发布：跑门禁 → 打包 → 建 Release 并附产物。
+# 用 Actions 内置 GITHUB_TOKEN，无需本地凭证。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # 创建 Release 并上传产物
+
+jobs:
+  release:
+    name: 构建并发布
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # 发布前把门禁跑一遍：宁可挡住，也不发一个已知坏的版本
+      - run: npm run verify:gateway
+      - run: npm run typecheck
+      - run: npm run test
+
+      # arm64 + x64 两个架构的 zip（electron-builder 配置里已声明）
+      - name: 打包
+        run: npm run build && npx electron-builder --mac --publish never
+
+      - name: 收集产物摘要
+        id: sums
+        run: |
+          echo "## 产物校验" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          shasum -a 256 dist/*.zip >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      # 用 runner 自带的 gh CLI 而非第三方 action：少一个供应链依赖
+      - name: 创建 Release（草稿）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --draft \
+            --title "cTools ${GITHUB_REF_NAME}" \
+            --notes-file .github/RELEASE_NOTES.md \
+            dist/*.zip dist/*.blockmap

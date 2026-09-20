@@ -7,13 +7,43 @@
 ## [Unreleased]
 
 ### 计划中
-- **阶段一** 打包分发：electron-builder + 应用图标 + `.dmg`/`.zip` 产物 + 版本策略；代码签名待自备 Apple Developer 账号
-- **阶段二** CI 回归门禁：typecheck / 单测 / 黄金集 / UI e2e 分 job
 - **阶段三** 健壮性：gateway 重试退避、错误分类、grep 异步化、配置数据版本与迁移
-- **阶段四** 产品化：首启向导、token/成本可见、用户文档
+- **阶段四** 产品化：token/成本可见、用户文档（`docs/guide.md`）
 - **阶段五** 跨平台：`System` 抽象落地、沙箱按平台降级
+- 代码签名与公证（待自备 Apple Developer 账号）；`.dmg` 产物
 
 详见 [docs/roadmap.md](docs/roadmap.md)。
+
+## [0.5.0] - 2026-09-20
+
+**首个可分发版本**：cTools 自带 gateway，装完即可用；arm64 与 x64 均有可用产物。
+
+### 新增
+- **自包含**：内嵌 gateway 服务端二进制（`Contents/Resources/gateway/`），cTools 直接拉起，不再需要用户预装任何东西；配置由 cTools 自持于 `<userData>/gateway.yaml`，首启自动从既有 gw 配置迁移
+- **打包分发**：electron-builder 产出 `.zip`（arm64 + x64）、应用图标、`CHANGELOG`
+- **首启向导**：零上游时一键检测本机 Ollama（无需密钥）或手填上游，一步配好并启动
+- **网关配置编辑**：设置里直接改 `providers` / `aliases`（备份 + 校验 + 原子写），改完热更或重启
+- **模型分配**：默认模型之外，固定场景（如翻译）可各用各的别名
+- **设置入口**：Launcher 空态「⚙️ 设置」行 + 菜单栏 `cTools → 设置…`（⌘,）
+- **首启目录引导**：`file_roots` 未配置时引导选择目录，不再默认放行整个文件系统
+- **CI 回归门禁**：typecheck / 单测 / 黄金集 / 构建（Linux）+ UI e2e（macOS）
+- **二进制溯源**：内嵌二进制的源 commit、构建命令与 sha256 入库，`npm run verify:gateway` 可校验
+
+### 修复
+- **x64 产物此前不可用**：只内嵌了 arm64 的 gateway，Intel Mac 装上后网关起不来
+- **关窗后无法续聊**：未决的批准/提问未释放，`running` 恒为 true 使 attach 静默失败，表现为「点了没反应」
+- **gateway 启动失败无迹可查**：子进程输出被丢弃，现落 `<userData>/gateway.log`
+- 连接设置（`gatewayUrl` 等）此前是设置页最显眼字段，易被误改导致全面不可用；现收进「高级」折叠
+
+### 变更
+- `grep` 结果、`ask` 澄清通道、工具描述等使 agent 的工具选择更准；只读工具并行执行
+- 上下文超限时改为「摘要 + 合并」而非直接丢弃旧消息
+
+### 已知限制
+- **仅 macOS**（系统集成依赖 `pbcopy` / `mdfind` / `sandbox-exec`）
+- **无签名**：首次打开需右键「打开」，或 `xattr -d com.apple.quarantine`（详见 `docs/guide.md`）
+- gateway 调用无重试；`grep` 为同步遍历（大目录会阻塞主进程）
+- `api_key_env` 指向的环境变量需在 **app 自己的环境** 中可见（GUI 启动不加载 `~/.zshrc`）
 
 ## [0.1.0] - 2026-09-19
 
