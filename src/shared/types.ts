@@ -289,8 +289,8 @@ export interface CtoolsApi {
     open(firstMessage?: string): Promise<{ id: string }>
     /** 最近会话摘要（按 updatedAt 降序，最多 10 条）。 */
     recent(): Promise<SessionSummary[]>
-    /** 载入历史会话续聊（打开/聚焦 Chat，不自动发消息）。 */
-    attach(id: string): Promise<{ id: string }>
+    /** 载入历史会话续聊（打开/聚焦 Chat，不自动发消息）。skipped>0 表示尾部有损坏行。 */
+    attach(id: string): Promise<{ id: string; skipped?: number }>
     /** 另起全新会话（Chat「＋新会话」）。 */
     newSession(): Promise<{ id: string }>
     send(text: string): Promise<void>

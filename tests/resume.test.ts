@@ -1,6 +1,6 @@
 // 会话持久化 / resume：JSONL 重放重建 + 最近会话扫描 + 续聊续写。
 import { describe, expect, it, afterAll, beforeAll } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Session, latestSessionId, listSessions, titleOf } from '../src/main/session'
@@ -65,6 +65,39 @@ describe('session 持久化 / resume', () => {
     const olderRow = list.find((r) => r.id === older)
     expect(olderRow?.title).toBe('旧会话标题')
     expect(olderRow?.updatedAt).toBeTruthy()
+  })
+
+  it('半行损坏（崩溃遗留）不阻断整段会话的载入', () => {
+    const id = 'trunc1'
+    const s1 = new Session(dir, id)
+    emit(s1, 'user.message', '第一句')
+    emit(s1, 'assistant.message', '第一句回复')
+    const before = s1.transcript().length
+    // 模拟崩溃：追加半行 JSON
+    appendFileSync(join(dir, `${id}.jsonl`), '{"event_id":"x","session_id":"trunc1","seq":3,"ty', 'utf-8')
+
+    const s2 = Session.fromJSONL(dir, id) // 不抛
+    expect(s2.transcript()).toHaveLength(before) // 有效事件全在
+    expect(s2.skippedLines).toBe(1) // 但如实报告
+    // 续写仍可用，且 seq 不冲突
+    emit(s2, 'user.message', '继续')
+    expect(s2.transcript().at(-1)?.seq).toBe(before + 1)
+  })
+
+  it('缺 seq 的行也按损坏跳过', () => {
+    const id = 'badseq'
+    const s = new Session(dir, id)
+    emit(s, 'user.message', 'hi')
+    appendFileSync(join(dir, `${id}.jsonl`), '{"event_id":"y","session_id":"badseq"}\n', 'utf-8')
+    const s2 = Session.fromJSONL(dir, id)
+    expect(s2.skippedLines).toBe(1)
+    expect(s2.transcript()).toHaveLength(1)
+  })
+
+  it('完好文件 skippedLines 为 0', () => {
+    const id = 'clean1'
+    emit(new Session(dir, id), 'user.message', 'ok')
+    expect(Session.fromJSONL(dir, id).skippedLines).toBe(0)
   })
 
   it('listSessions 缺 user.message / 空目录 不崩', () => {

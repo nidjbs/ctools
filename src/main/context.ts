@@ -149,6 +149,28 @@ export async function compactIfNeeded(session: Session, opts: Partial<ContextOpt
       remainCount -= 1
     }
     if (batch.length) {
+      // 原子性（与 step 3 同理，但摘要批次单独选，必须自己保证）：
+      // 批次若含 assistant(tool_calls)，其配对的 tool.result 必须一起进批次。
+      // 否则 shadow 掉 assistant 却留下 tool.result → 投影里出现「孤立的 tool 消息」→ 上游 400。
+      const pending = new Set<string>()
+      for (const e of batch) {
+        if (e.type === 'assistant.message') {
+          for (const tc of (e.tool_calls as { id?: string }[] | undefined) ?? []) if (tc.id) pending.add(tc.id)
+        }
+        if (e.type === 'tool.result' && e.tool_call_id) pending.delete(e.tool_call_id)
+      }
+      if (pending.size > 0) {
+        const inBatch = new Set(batch.map((e) => e.seq))
+        for (const e of live) {
+          if (pending.size === 0) break
+          if (inBatch.has(e.seq)) continue
+          if (e.type === 'tool.result' && e.tool_call_id && pending.has(e.tool_call_id)) {
+            batch.push(e)
+            inBatch.add(e.seq)
+            pending.delete(e.tool_call_id)
+          }
+        }
+      }
       // 摘要合并：把已有摘要一并喂给模型，并让它们随本次压缩退役 —— 长会话里只保留**一条**摘要，
       // 避免历次摘要层层堆积（信息不丢：旧摘要内容已并入新的）。
       const digest = [

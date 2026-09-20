@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { GatewayClient } from '../src/main/gatewayClient'
+import { estimateMessagesTokens } from '../src/shared/tokens'
 import { ChatManager, type ChatIO } from '../src/main/chat'
 import { Registry } from '../src/main/registry'
 import { MemoryStore } from '../src/main/memory'
@@ -471,6 +472,74 @@ describe('G9 P1 工具能力：ask / file_edit / grep / 并发顺序 / 工具描
     expect(env).toContain('file_edit')
     expect(env).toContain('grep')
     expect(env).toContain('ask')
+  })
+})
+
+describe('G11 长会话可用性（specs/context.md 的实际表现）', () => {
+  /**
+   * 一小段带工具往返的轮次，用来把会话堆到触发压缩。
+   * **必须区分非流式请求**：那是上下文摘要调用，若也当成流式回空串，摘要会失败并退回「直接丢头」，
+   * 于是这段测试就验证不到摘要承接早期目标的行为。
+   */
+  const turnWithTool = (tool: string, args: unknown, summary: string) => (req: GatewayRequest): Reply => {
+    if (!req.stream) return { stream: false, content: summary }
+    let lastUser = -1
+    req.messages.forEach((m, i) => {
+      if (m.role === 'user') lastUser = i
+    })
+    const thisTurn = req.messages.slice(lastUser + 1)
+    return thisTurn.some((m) => m.role === 'tool')
+      ? { stream: true, content: '好' }
+      : { stream: true, toolCalls: [{ name: tool, args }] }
+  }
+
+  it('长会话：每轮请求都不超预算，且早期目标由摘要保住（而非直接丢失）', async () => {
+    ctx.config.contextTokens = 1200 // 小窗口逼出多轮压缩
+    const goal = '目标：把 /tmp/report.csv 按月份汇总'
+    // 摘要承接早期目标（真实场景里由模型产出）
+    responder = turnWithTool('file_list', { path: root }, '早期要点：目标是把 /tmp/report.csv 按月份汇总')
+
+    const chat = newChat(fullRegistry())
+    await chat.open(undefined, io())
+    await chat.run(goal, io()) // 第一轮承载任务目标
+    for (let i = 0; i < 25; i++) await chat.run(`第${i}轮：${'补充'.repeat(40)}`, io())
+
+    // ① 每一次发给模型的请求都在预算内（用与实现同源的估算，容忍 system 段与工具定义的少量溢出）
+    const over = gw.turns().filter((t) => estimateMessagesTokens(t.messages) > 1200 * 1.6)
+    expect(over).toHaveLength(0)
+
+    // ② 早期目标没有消失：要么原文还在，要么被摘要承接（不得静默丢失）
+    const last = gw.turns().at(-1)!
+    const joined = last.messages.map((m) => m.content ?? '').join('\n')
+    // 审计无损：原文永远在 transcript 里
+    expect(chat.transcript().some((e) => e.content?.includes('report.csv'))).toBe(true)
+    // 模型侧：早期目标不得静默消失 —— 要么原文还在，要么被摘要承接
+    expect(joined.includes('report.csv')).toBe(true)
+
+    // ③ 原子性：请求里绝不出现「孤立的 tool 消息」（无前置 tool_calls）——上游会 400
+    for (const t of gw.turns()) {
+      t.messages.forEach((m, i) => {
+        if (m.role !== 'tool') return
+        const prev = t.messages[i - 1]
+        const ok = prev?.role === 'assistant' && (prev?.tool_calls as unknown[] | undefined)?.length
+        expect(ok).toBeTruthy()
+      })
+    }
+  })
+
+  it('长会话不会失控：轮数与耗时都在有界范围', async () => {
+    ctx.config.contextTokens = 1200
+    responder = () => ({ stream: true, content: '好' })
+    const chat = newChat()
+    await chat.open(undefined, io())
+    const t0 = Date.now()
+    for (let i = 0; i < 40; i++) await chat.run(`第${i}轮：${'内容'.repeat(30)}`, io())
+    const elapsed = Date.now() - t0
+    // 40 轮 × (1 次模型请求 + 压缩开销) 应在数秒内完成；这里给足余量只拦「数量级失控」
+    expect(elapsed).toBeLessThan(20_000)
+    // 摘要不堆积：模型可见的摘要始终只有一条（合并生效）
+    const visible = gw.turns().at(-1)!.messages.filter((m) => m.content?.includes('早期对话摘要'))
+    expect(visible.length).toBeLessThanOrEqual(1)
   })
 })
 

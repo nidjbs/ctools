@@ -204,6 +204,36 @@ describe('摘要压缩（不丢任务目标）', () => {
     expect(s.transcript().some((e) => e.content?.includes('第一轮摘要'))).toBe(true)
   })
 
+  it('摘要批次不切开 tool 单元：压缩后不得残留孤立的 tool 消息', async () => {
+    // 多个带工具往返的轮次，把批次边界正好压在 tool 单元上
+    const s = new Session()
+    seedSystem(s, 'sys')
+    for (let i = 1; i <= 4; i++) {
+      s.append('user.message', { role: 'user', content: `问题${i}：${'甲'.repeat(60)}` })
+      s.append('assistant.message', {
+        role: 'assistant',
+        tool_calls: [{ id: `c${i}`, type: 'function', function: { name: 'file_list', arguments: '{}' } }],
+      })
+      s.append('tool.call', { tool_name: 'file_list', tool_call_id: `c${i}` })
+      s.append('tool.result', { role: 'tool', tool_call_id: `c${i}`, content: `结果${i}` })
+      s.append('assistant.message', { role: 'assistant', content: `回复${i}` })
+    }
+    await compactIfNeeded(s, {
+      capacityTokens: 400,
+      capacityCount: 200,
+      triggerPercent: 20,
+      summarize: async () => '早期摘要',
+    })
+    // 投影里，任何 tool 消息前面必须是带 tool_calls 的 assistant
+    const msgs = s.messages()
+    msgs.forEach((m, i) => {
+      if (m.role !== 'tool') return
+      const prev = msgs[i - 1]
+      expect(prev?.role).toBe('assistant')
+      expect((prev?.tool_calls as unknown[] | undefined)?.length ?? 0).toBeGreaterThan(0)
+    })
+  })
+
   it('兜底丢头不触碰摘要（KEEP_TYPES）：无 summarize 时摘要不参与 shadow 候选', async () => {
     const s = longSession()
     await compactIfNeeded(s, { ...COUNT_ONLY, capacityCount: 6, triggerPercent: 20, summarize: async () => '保留的摘要' })

@@ -63,12 +63,18 @@ export class ChatManager {
   }
 
   /** 载入历史会话续聊：重放指定 id 并设为活动（不自动发消息）。running 守卫。 */
-  async attach(id: string): Promise<{ id: string }> {
+  async attach(id: string): Promise<{ id: string; skipped?: number }> {
     if (this.running) throw new Error('上一轮仍在运行，请等待或取消')
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) throw new Error('非法的会话 id')
     if (!this.sessionsDir) throw new Error('未配置会话目录')
-    this.session = Session.fromJSONL(this.sessionsDir, id) // 文件不存在/坏 → 上抛
+    this.session = Session.fromJSONL(this.sessionsDir, id) // 文件不存在 → 上抛
     this.pendingPlan = null
+    const skipped = this.session.skippedLines
+    if (skipped > 0) {
+      // 不静默：尾部有损坏行说明这段记录不完整（多是崩溃留下的半行）
+      console.warn(`[session] ${id}: 载入时跳过 ${skipped} 行损坏数据`)
+      return { id: this.session.id, skipped }
+    }
     return { id: this.session.id }
   }
 

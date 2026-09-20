@@ -491,6 +491,9 @@ export default function App() {
                       // 失败必须可见：以前静默吞掉，表现为「点了没反应」
                       void window.api.session
                         .attach(r.id)
+                        .then((res) => {
+                          if (res?.skipped) setToast(`该会话尾部有 ${res.skipped} 行损坏数据，已跳过`)
+                        })
                         .catch((e) => setFatal(`打开会话失败：${(e as Error).message ?? e}`))
                     }}
                   >

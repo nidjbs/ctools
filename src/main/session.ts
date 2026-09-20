@@ -79,13 +79,32 @@ export class Session {
     this.id = id ?? randomUUID().slice(0, 12)
   }
 
-  /** 从 JSONL 重放重建会话（seq 续接，可继续追加写回同一文件）。 */
+  /** 因损坏被跳过的行数（崩溃可能留下半行）。>0 说明这段会话的尾部有丢失。 */
+  skippedLines = 0
+
+  /**
+   * 从 JSONL 重放重建会话（seq 续接，可继续追加写回同一文件）。
+   *
+   * **损坏行跳过而非抛错**：写入是追加式的，进程崩溃可能留下半行；若整体抛错，
+   * 用户会连这段对话都打不开 —— 代价远大于丢掉最后半行。跳过的行数记在 `skippedLines`
+   * 里，供上层提示（不静默）。
+   */
   static fromJSONL(dir: string, id: string): Session {
     const s = new Session(dir, id)
     const raw = readFileSync(join(dir, `${id}.jsonl`), 'utf-8')
     for (const line of raw.split('\n')) {
       if (!line.trim()) continue
-      const ev = JSON.parse(line) as SessionEvent
+      let ev: SessionEvent
+      try {
+        ev = JSON.parse(line) as SessionEvent
+      } catch {
+        s.skippedLines++
+        continue
+      }
+      if (!ev || typeof ev.seq !== 'number') {
+        s.skippedLines++
+        continue
+      }
       s.events.push(ev)
       if (ev.seq > s.seq) s.seq = ev.seq
     }
